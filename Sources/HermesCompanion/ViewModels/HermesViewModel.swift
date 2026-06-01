@@ -57,7 +57,7 @@ public class HermesViewModel: ObservableObject {
         }
         
         do {
-            let response = try await service.sendCommand(command)
+            _ = try await service.sendCommand(command)
             
             // Reload all lists and update states
             async let runsFetch = service.getRecentRuns()
