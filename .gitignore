@@ -1,0 +1,7 @@
+.DS_Store
+/.build
+/Packages
+/GeneratedRecipes
+.swiftpm
+xcuserdata/
+*.xcodeproj
