@@ -1,10 +1,12 @@
 import SwiftUI
 
 public struct MainView: View {
-    @StateObject private var viewModel = HermesViewModel(service: MockHermesService())
+    @StateObject private var viewModel: HermesViewModel
     @State private var navigationSelection: NavigationItem? = .dashboard
     
-    public init() {}
+    public init(service: any HermesService = MockHermesService()) {
+        self._viewModel = StateObject(wrappedValue: HermesViewModel(service: service))
+    }
     
     public var body: some View {
         NavigationSplitView {
