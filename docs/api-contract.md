@@ -1,11 +1,13 @@
 # Hermes Companion — Verified API Contract
 
 > [!IMPORTANT]
-> **Status:** `VERIFIED / UNAVAILABLE (June 2, 2026)`
-> **Conclusion:** Direct diagnostic checks have confirmed that the bundled Python interpreter inside `/Applications/Hermes Studio.app` is **missing the required FastAPI and Uvicorn packages**. 
-> As a result, starting the dashboard server via the bundled interpreter fails, and the local REST API (default port `9119`) is **unavailable** in this local installation.
+> **Status:** `VERIFIED / PARTIALLY OFFLINE (June 2, 2026)`
 > 
-> The API contracts documented below have been verified against the underlying source files, but they are currently **non-functional/offline**. `LiveHermesService` is preserved in the app code as a future-compatible integration, but must run in **Mock Mode** by default.
+> This document distinguishes three critical dimensions of our system integration:
+> 
+> 1.  **Discovered API Contract:** The structural endpoint paths and JSON payload schemas have been fully discovered and verified by inspecting the actual Hermes Studio source files inside `/Applications/Hermes Studio.app` (e.g. `web_server.py` and `main.py`). The structures are fully future-compatible.
+> 2.  **Runtime Availability:** The app's `LiveHermesService` is ready to consume these real HTTP endpoints. However, because port `9119` is unlistening at runtime, the REST pathway remains offline. Local system state scans are routed through **Local Diagnostics Mode** instead.
+> 3.  **Unsupported/Unavailable Dashboard Server:** Direct checks confirm the app's bundled Python interpreter is **missing FastAPI and Uvicorn**. Starting the dashboard via `dashboard --port 9119` fails immediately with an import error. No network API listener exists in this local installation.
 
 ---
 

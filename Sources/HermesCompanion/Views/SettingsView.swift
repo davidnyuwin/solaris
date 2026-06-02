@@ -4,6 +4,7 @@ public struct SettingsView: View {
     @ObservedObject var viewModel: HermesViewModel
     @State private var showingSaveAlert = false
     @AppStorage("UseMockService") private var useMockService = true
+    @AppStorage("HermesServiceMode") private var serviceMode = HermesServiceMode.mock.rawValue
     
     enum TestStatus: Equatable {
         case idle
@@ -73,12 +74,19 @@ public struct SettingsView: View {
             }
             
             Section(header: Text("App Preference").foregroundColor(.white.opacity(0.5))) {
-                Toggle("Developer Mock Data Mode", isOn: $useMockService)
-                    .onChange(of: useMockService) {
-                        Task {
-                            await viewModel.loadAllData()
-                        }
+                Picker("Connection Mode", selection: $serviceMode) {
+                    ForEach(HermesServiceMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode.rawValue)
                     }
+                }
+                .onChange(of: serviceMode) {
+                    // Update legacy toggle for backward compatibility
+                    useMockService = (serviceMode == HermesServiceMode.mock.rawValue)
+                    Task {
+                        await viewModel.loadAllData()
+                    }
+                }
+                
                 Toggle("Launch at Login", isOn: .constant(true))
                 Toggle("Keep Window Floating on Top", isOn: .constant(false))
             }

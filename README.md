@@ -59,19 +59,15 @@ swift test
 
 ---
 
-## 🔌 Connection Map: Real API Integration
+## 🔌 Connection Map: Three Service Integration Modes
 
-The app uses `DynamicHermesService` by default. This proxy dynamically switches between the mock data provider and the live REST integration depending on the **Developer Mock Data Mode** toggle in your in-app **Settings**:
+The app uses a `DynamicHermesService` orchestrator that switches the underlying integration engine dynamically depending on your choice in the in-app **Settings**:
 
-*   **Mock Service (default):** Safely isolated inside a local Swift actor (`MockHermesService`) for offline design iterations. Recommended for this installation.
-*   **Live REST Service (`LiveHermesService`):** Designed to connect directly to the local Hermes Studio endpoint at **`http://127.0.0.1:9119`**.
+1.  **Mock Mode (Default):** Safely isolated inside a local Swift actor (`MockHermesService`) for offline design iterations and public demos. Returns beautiful, realistic simulated metrics, active timeline logs, and quick actions.
+2.  **Experimental REST Mode:** Connects to the local web server endpoint on `http://127.0.0.1:9119` using `LiveHermesService`. Fully mapped and validated against the Hermes Studio daemon code, but currently offline due to missing server-side dependencies (`fastapi` / `uvicorn`) in this local installation.
+3.  **Local Diagnostics Mode:** A completely offline, non-network diagnostic scanner (`LocalHermesDiagnosticsService`). It leverages safe shell process inspection (`pgrep`/`ps`) and filesystem scanning to discover if the background gateway daemon is running, inspects `lsof` to scan port listeners, and directly reads and tokenizes live logging from `~/.hermes/logs/agent.log` and `~/.hermes/logs/gateway.log` to populate the diagnostic log terminal in real time.
 
-During **Phase 1**, the live service structure supports:
-1. `GET /api/status` mapped from raw DTOs to local `HermesStatus` states.
-2. `GET /api/sessions` (runs history) mapped to lists of `HermesRun`.
-3. `GET /api/logs` mapped and parsed into diagnostic `LogLine` consoles.
-
-*Note: Live command submissions and chat sessions are disabled or marked offline in Phase 1 pending future WebSocket integration.*
+---
 
 ## 🔍 Diagnostic Testing & Smoke Tests
 

@@ -1,59 +1,76 @@
 import Foundation
 
+public enum HermesServiceMode: String, CaseIterable, Identifiable {
+    case mock = "mock"
+    case rest = "rest"
+    case diagnostics = "diagnostics"
+    
+    public var id: String { self.rawValue }
+    
+    public var displayName: String {
+        switch self {
+        case .mock: return "Mock Mode"
+        case .rest: return "Experimental REST Mode"
+        case .diagnostics: return "Local Diagnostics Mode"
+        }
+    }
+}
+
 public final class DynamicHermesService: HermesService, @unchecked Sendable {
     private let mockService: MockHermesService
     private let liveService: LiveHermesService
+    private let diagnosticsService: LocalHermesDiagnosticsService
     
     public init() {
         self.mockService = MockHermesService()
         self.liveService = LiveHermesService(baseURL: URL(string: "http://127.0.0.1:9119")!)
+        self.diagnosticsService = LocalHermesDiagnosticsService()
     }
     
-    private var useMock: Bool {
-        // Toggle on Mock by default if not set
-        if UserDefaults.standard.object(forKey: "UseMockService") == nil {
-            UserDefaults.standard.set(true, forKey: "UseMockService")
+    public var currentMode: HermesServiceMode {
+        if let savedMode = UserDefaults.standard.string(forKey: "HermesServiceMode"),
+           let mode = HermesServiceMode(rawValue: savedMode) {
+            return mode
         }
-        return UserDefaults.standard.bool(forKey: "UseMockService")
+        
+        // Legacy compatibility
+        if UserDefaults.standard.object(forKey: "UseMockService") != nil {
+            let useMock = UserDefaults.standard.bool(forKey: "UseMockService")
+            return useMock ? .mock : .rest
+        }
+        
+        // Default is Mock
+        return .mock
+    }
+    
+    private var activeService: any HermesService {
+        switch currentMode {
+        case .mock:
+            return mockService
+        case .rest:
+            return liveService
+        case .diagnostics:
+            return diagnosticsService
+        }
     }
     
     public func getStatus() async throws -> HermesStatus {
-        if useMock {
-            return try await mockService.getStatus()
-        } else {
-            return try await liveService.getStatus()
-        }
+        return try await activeService.getStatus()
     }
     
     public func getRecentRuns() async throws -> [HermesRun] {
-        if useMock {
-            return try await mockService.getRecentRuns()
-        } else {
-            return try await liveService.getRecentRuns()
-        }
+        return try await activeService.getRecentRuns()
     }
     
     public func getProviderHealth() async throws -> [ProviderHealth] {
-        if useMock {
-            return try await mockService.getProviderHealth()
-        } else {
-            return try await liveService.getProviderHealth()
-        }
+        return try await activeService.getProviderHealth()
     }
     
     public func getRecentLogs() async throws -> [LogLine] {
-        if useMock {
-            return try await mockService.getRecentLogs()
-        } else {
-            return try await liveService.getRecentLogs()
-        }
+        return try await activeService.getRecentLogs()
     }
     
     public func sendCommand(_ command: String) async throws -> HermesResponse {
-        if useMock {
-            return try await mockService.sendCommand(command)
-        } else {
-            return try await liveService.sendCommand(command)
-        }
+        return try await activeService.sendCommand(command)
     }
 }

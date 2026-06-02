@@ -22,6 +22,12 @@ public struct DashboardView: View {
                     StatusCard(status: status)
                         .padding(.horizontal)
                         .frame(maxWidth: 500)
+                    
+                    if status.gatewayRunning != nil {
+                        LocalDiagnosticsCard(status: status)
+                            .padding(.horizontal)
+                            .frame(maxWidth: 500)
+                    }
                 }
             }
             

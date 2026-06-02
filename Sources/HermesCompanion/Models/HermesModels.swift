@@ -13,11 +13,36 @@ public struct HermesStatus: Codable {
     public let relayConnected: Bool
     public let activeJobsCount: Int
     
-    public init(state: HermesState, uptimeSeconds: Int, relayConnected: Bool, activeJobsCount: Int) {
+    // Phase 2: Local Diagnostics Info
+    public let gatewayRunning: Bool?
+    public let dashboardAvailable: Bool?
+    public let agentLogFound: Bool?
+    public let gatewayLogFound: Bool?
+    public let agentLogPath: String?
+    public let gatewayLogPath: String?
+    
+    public init(
+        state: HermesState,
+        uptimeSeconds: Int,
+        relayConnected: Bool,
+        activeJobsCount: Int,
+        gatewayRunning: Bool? = nil,
+        dashboardAvailable: Bool? = nil,
+        agentLogFound: Bool? = nil,
+        gatewayLogFound: Bool? = nil,
+        agentLogPath: String? = nil,
+        gatewayLogPath: String? = nil
+    ) {
         self.state = state
         self.uptimeSeconds = uptimeSeconds
         self.relayConnected = relayConnected
         self.activeJobsCount = activeJobsCount
+        self.gatewayRunning = gatewayRunning
+        self.dashboardAvailable = dashboardAvailable
+        self.agentLogFound = agentLogFound
+        self.gatewayLogFound = gatewayLogFound
+        self.agentLogPath = agentLogPath
+        self.gatewayLogPath = gatewayLogPath
     }
 }
 
