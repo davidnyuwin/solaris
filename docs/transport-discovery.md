@@ -104,9 +104,18 @@ Transport discovery phase only. No live control has been implemented.
 
 ---
 
+## ⚡ Integration Strategy Selection
+
+> [!IMPORTANT]
+> **CLI Discovery is now the preferred integration path for Solaris.**
+> While the REST and WebSocket routes have been source-confirmed, they remain **runtime-unavailable** in this Hermes Studio installation due to missing `FastAPI` and `Uvicorn` dependencies in the python bundle environment. 
+> Spawning inspect-only CLI subprocesses (Option D) is highly secure, requires no local network servers, operates 100% offline, and perfectly bridges model status, active settings, and process telemetry into Solaris.
+
+---
+
 ## Recommended Next Step
 1. **Retain Local Diagnostics as the primary core:** Keep utilizing filesystem scanning and `pgrep`/`lsof` for baseline status.
-2. **Implement CLI Wrapper integration as an experimental second pathway:** Instead of network socket connections, let the companion UI invoke `hermes status` and `hermes model` directly using standard Swift sub-processes. This safely adds status queries and model switching capabilities without requiring network servers or missing packaging packages.
+2. **Implement a safe CLI Wrapper service:** Let the companion UI invoke `hermes status` and `hermes config show` directly using standard Swift `Process` executions. Parse the plain text stdout to retrieve the active model name and gateway running states. This adds real-time settings validation without requiring uvicorn network servers or missing Python libraries.
 
 ---
 
