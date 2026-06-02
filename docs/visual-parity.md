@@ -221,7 +221,20 @@ This screenshot should be used to guide future replacement of concept mockups on
 *   **Dashboard Parity Achieved:** Evolving the Dashboard to match visual specifications is complete. No remaining layout parity gaps exist.
 
 ### 💡 Visual Compromises & Technical Decisions
-*   **Manual Screen Capturing:** To complete visual check-pointing for Batch 4, a fresh actual runtime screenshot of the polished Dashboard should be manually captured next.
+*   **Manual Screen Capturing:** To complete visual check-pointing for Batch 4, a fresh actual runtime screenshot of the polished Dashboard has been captured and validated.
+
+---
+
+## Batch 4 Runtime Screenshot Captured
+
+Actual runtime screenshot has now been captured for the polished Dashboard interface:
+- docs/screenshots/runtime-dashboard.png
+
+This completes the runtime screenshot checkpoint for the major v0.2 visual polish areas:
+- Dashboard
+- Local Diagnostics
+- Settings
+
 
 
 
