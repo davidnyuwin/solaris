@@ -117,6 +117,20 @@ To verify endpoint connectivity without relying on standard unit test compilatio
 *   **No Credentials Required:** The current application operates entirely without requesting, storing, or requiring any API keys or tokens.
 *   **Future Authentication Security:** Any future access tokens or authorization credentials must use the secure **macOS Keychain services API**, never in committed configuration files or UserDefaults.
 
+## 📦 Local App Bundle
+
+Solaris can be packaged into a local, unsigned, standalone macOS `.app` bundle for development testing and Finder launching:
+
+```bash
+# Compile in release mode and bundle the app
+./scripts/build-app.sh
+
+# Open the app bundle from your terminal
+open dist/Solaris.app
+```
+
+*Note: This is an unsigned, unnotarized development-stage package. It is intended strictly for local verification.*
+
 ---
 
 ## 🗺️ Roadmap
