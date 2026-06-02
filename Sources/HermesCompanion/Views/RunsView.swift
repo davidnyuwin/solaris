@@ -48,6 +48,6 @@ public struct RunsView: View {
                 .padding(.horizontal)
             }
         }
-        .background(Color.hermesObsidian.ignoresSafeArea())
+        .background(Color.clear)
     }
 }

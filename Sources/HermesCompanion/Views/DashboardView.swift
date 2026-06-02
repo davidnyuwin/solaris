@@ -93,6 +93,6 @@ public struct DashboardView: View {
             .padding([.horizontal, .bottom])
             .frame(maxWidth: 700)
         }
-        .background(Color.hermesObsidian.ignoresSafeArea())
+        .background(Color.clear)
     }
 }

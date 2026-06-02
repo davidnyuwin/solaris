@@ -84,3 +84,19 @@ To achieve maximum visual upgrade with minimal compile-risk, we break the visual
 *   **Task 1:** Refactor `SettingsView` from basic Form rows into elegant connection cards.
 *   **Task 2:** Embed custom TextField styling with inline connection status indicators.
 *   *Effort: Small | Impact: Medium*
+
+---
+
+## 🛠️ Batch 1 Status & Updates (June 2, 2026)
+
+### ✅ What Changed
+*   **Volumetric Solaris Orb:** Completely rebuilt `HermesOrbView` from standard circles to a highly premium volumetric sun. Embedded 5 layered, overlapping circular/radial gradients, dynamic breathing scale animation, slow clockwise/counter-clockwise multi-rotational layers, a soft radial indigo edge glow for three-dimensional perspective, and full support for Reduce Motion accessibility properties. Removed the hard SF Symbol glyph center.
+*   **Glassmorphic Backdrops:** Rebuilt the `MainView` detail pane with a deep graphite/violet backdrop gradient and a top-center radial solar orange glow to reflect behind the central orb canvas. Configured all detail views (`DashboardView`, `RunsView`, `ProvidersView`, `SettingsView`) to use transparent backgrounds (`Color.clear`), enabling the ambient backdrop glow to seamlessly bleed through.
+
+### ⚠️ What Remains
+*   **Grouped Diagnostics Panes:** Batch 2 remains next in order to organize list details into parsed column tables and status badges.
+*   **Custom Settings Cards:** Batch 3 is required to convert default Form structures to elegant connection panels.
+
+### 💡 Visual Compromises & Technical Decisions
+*   **Sidebar Vibrant Material:** Left the sidebar's native material blending intact to let macOS manage window transparency naturally rather than hardcoding overdone, high-vibrancy colored graphics.
+*   **Mockup Parity:** While the orb and backdrop represent an immense, high-impact jump in quality matching the concept art style, the app window does not fully duplicate the three-column greeting details because structural functionality (which requires core app model changes) remains decoupled in this visual batch.

@@ -103,7 +103,7 @@ public struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .background(Color.hermesObsidian.ignoresSafeArea())
+        .background(Color.clear)
         .alert("Settings Updated", isPresented: $showingSaveAlert) {
             Button("OK", role: .cancel) { }
         } message: {

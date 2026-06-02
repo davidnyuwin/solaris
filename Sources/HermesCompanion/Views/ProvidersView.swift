@@ -51,6 +51,6 @@ public struct ProvidersView: View {
                 .padding(.horizontal)
             }
         }
-        .background(Color.hermesObsidian.ignoresSafeArea())
+        .background(Color.clear)
     }
 }
