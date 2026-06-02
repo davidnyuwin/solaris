@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Conservative auto-refresh interval selector for Local Diagnostics (Manual / 30 sec / 1 min / 5 min)
 - Cancellation-aware diagnostics refresh scheduler (stops on view disappear, skips overlapping sweeps)
 - Persistent default-on Privacy Mode for diagnostics views
+- Accessibility labels, hints, and values for Local Diagnostics controls and status cards
 
 ### Security
 - Copied diagnostics summaries redact local paths, process IDs, and token-like strings

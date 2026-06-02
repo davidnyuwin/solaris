@@ -29,6 +29,7 @@ public struct ProvidersView: View {
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.35))
                                 .accessibilityLabel("Last diagnostics refresh time")
+                                .accessibilityValue(formatTimestamp(viewModel.lastDiagnosticsRefreshAt))
                             
                             if viewModel.isRefreshingDiagnostics {
                                 ProgressView()
@@ -63,6 +64,8 @@ public struct ProvidersView: View {
                                 .background(Color.white.opacity(0.04))
                                 .cornerRadius(4)
                                 .accessibilityLabel("Diagnostics auto-refresh interval")
+                                .accessibilityValue(viewModel.refreshInterval.displayName)
+                                .accessibilityHint("Choose how often Solaris refreshes local diagnostics")
                             }
                             
                             let stateLabelText: String = {
@@ -78,6 +81,7 @@ public struct ProvidersView: View {
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.35))
                                 .accessibilityLabel("Current diagnostics auto-refresh state")
+                                .accessibilityValue(stateLabelText)
                             
                             if viewModel.isDiagnosticsLogPaused && viewModel.refreshInterval != .manual {
                                 Text("Logs paused. Status cards may continue refreshing.")
@@ -117,6 +121,7 @@ public struct ProvidersView: View {
                     .padding(.trailing, 10)
                     .padding(.top, 4)
                     .accessibilityLabel("Refresh local diagnostics")
+                    .accessibilityHint("Runs read-only diagnostics checks now")
                     
                     Toggle(isOn: $isPrivacyModeActive) {
                         VStack(alignment: .leading, spacing: 1) {
@@ -130,6 +135,9 @@ public struct ProvidersView: View {
                     }
                     .toggleStyle(.checkbox)
                     .padding(.top, 4)
+                    .accessibilityLabel("Diagnostics privacy mode")
+                    .accessibilityValue(isPrivacyModeActive ? "On" : "Off")
+                    .accessibilityHint("Redacts local paths, process IDs, and token-like strings")
                 }
                 .padding([.top, .horizontal])
                 .padding(.bottom, 16)
@@ -376,6 +384,7 @@ public struct ProvidersView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(viewModel.isDiagnosticsLogPaused ? "Resume diagnostics log updates" : "Pause diagnostics log updates")
+                    .accessibilityHint("Freezes or resumes the visible diagnostics log display")
                     
                     Button(action: {
                         viewModel.copyDiagnosticsSummaryToClipboard()
@@ -394,6 +403,7 @@ public struct ProvidersView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Copy redacted diagnostics summary")
+                    .accessibilityHint("Copies a privacy-safe diagnostics summary to the clipboard")
                     
                     Spacer()
                     

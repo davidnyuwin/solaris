@@ -47,6 +47,7 @@ public struct DiagnosticsLogConsole: View {
                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
         )
+        .accessibilityLabel(logs.isEmpty ? "Diagnostics log console, no entries" : "Diagnostics log console, \(logs.count) entries")
     }
 }
 
@@ -80,6 +81,9 @@ struct LogConsoleRow: View {
         .padding(.horizontal, 6)
         .background(rowBgColor)
         .cornerRadius(4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(log.level.isEmpty ? "Log entry" : "\(log.level) log")
+        .accessibilityValue("\(formatTimestamp(log.timestamp)): \(safeMessage)")
     }
     
     private var rowBgColor: Color {

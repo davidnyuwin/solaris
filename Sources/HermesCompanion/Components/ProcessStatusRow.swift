@@ -95,6 +95,10 @@ public struct ProcessStatusRow: View {
         .padding(.horizontal, 10)
         .background(Color.white.opacity(0.01))
         .cornerRadius(8)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityValue("\(status.rawValue)\(sanitizedAccessibilityDetail)")
+        .accessibilityHint("Local diagnostics status row")
     }
     
     private func redactPath(_ path: String) -> String {
@@ -104,5 +108,16 @@ public struct ProcessStatusRow: View {
             return "~/.hermes/.../\(lastComponent)"
         }
         return "~/... [REDACTED]"
+    }
+    
+    private var sanitizedAccessibilityDetail: String {
+        var parts: [String] = []
+        if let detail = detailText {
+            let safe = isPrivacyActive ? redactPath(detail) : detail
+            // Strip absolute paths from the a11y value even in non-privacy mode
+            let stripped = DiagnosticsRedactor.redact(safe, redactPIDs: isPrivacyActive, redactTokens: true)
+            parts.append(", \(stripped)")
+        }
+        return parts.joined()
     }
 }

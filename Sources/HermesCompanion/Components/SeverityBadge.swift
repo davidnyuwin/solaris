@@ -19,6 +19,8 @@ public struct SeverityBadge: View {
                 RoundedRectangle(cornerRadius: 4)
                     .stroke(foregroundColor.opacity(0.25), lineWidth: 0.5)
             )
+            .accessibilityLabel("Log severity")
+            .accessibilityValue(displayLabel)
     }
     
     private var displayLabel: String {

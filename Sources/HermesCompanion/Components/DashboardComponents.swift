@@ -192,6 +192,9 @@ struct LatestSignalCard: View {
                 Spacer()
             }
             .padding(.vertical, 4)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(latest != nil ? "Latest signal" : "Latest signal: System stable")
+            .accessibilityValue(latest.map { "\($0.level): \($0.message)" } ?? "All local pathways reporting healthy")
         }
     }
     
@@ -267,6 +270,8 @@ struct SuggestedActionCard: View {
             }
             .buttonStyle(.plain)
             .padding(.top, 4)
+            .accessibilityLabel(buttonText)
+            .accessibilityHint(subtitle)
         }
     }
 }
