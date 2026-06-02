@@ -61,21 +61,17 @@ swift test
 
 ## 🔌 Connection Map: Real API Integration
 
-The app relies on the `HermesService` protocol definition. To wire in your actual local server:
+The app uses `DynamicHermesService` by default. This proxy dynamically switches between the mock data provider and the live REST integration depending on the **Developer Mock Data Mode** toggle in your in-app **Settings**:
 
-1. Replace `MockHermesService()` instantiation in `MainView.swift` with a production service:
-```swift
-struct LiveHermesService: HermesService {
-    let endpoint: URL
-    
-    func getStatus() async throws -> HermesStatus {
-        let (data, _) = try await URLSession.shared.data(from: endpoint.appendingPathComponent("/status"))
-        return try JSONDecoder().decode(HermesStatus.self, from: data)
-    }
-    // ... implement recent runs, logs, and sendCommand via SSE or REST
-}
-```
-2. Configure your custom endpoint under **Settings** view in-app.
+*   **Mock Service (default):** Safely isolated inside a local Swift actor (`MockHermesService`) for offline design iterations.
+*   **Live REST Service (`LiveHermesService`):** Connects directly to the verified Hermes Studio local endpoint at **`http://127.0.0.1:9119`**.
+
+During **Phase 1**, the live service supports:
+1. `GET /api/status` mapped from raw DTOs to local `HermesStatus` states.
+2. `GET /api/sessions` (runs history) mapped to lists of `HermesRun`.
+3. `GET /api/logs` mapped and parsed into diagnostic `LogLine` consoles.
+
+*Note: Live command submissions and chat sessions are disabled or marked offline in Phase 1 pending future WebSocket integration.*
 
 ---
 

@@ -3,6 +3,7 @@ import SwiftUI
 public struct SettingsView: View {
     @ObservedObject var viewModel: HermesViewModel
     @State private var showingSaveAlert = false
+    @AppStorage("UseMockService") private var useMockService = true
     
     public init(viewModel: HermesViewModel) {
         self.viewModel = viewModel
@@ -24,6 +25,7 @@ public struct SettingsView: View {
             }
             
             Section(header: Text("App Preference").foregroundColor(.white.opacity(0.5))) {
+                Toggle("Developer Mock Data Mode", isOn: $useMockService)
                 Toggle("Launch at Login", isOn: .constant(true))
                 Toggle("Keep Window Floating on Top", isOn: .constant(false))
             }

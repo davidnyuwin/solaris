@@ -14,7 +14,7 @@ public class HermesViewModel: ObservableObject {
     @Published public var isPendingResponse: Bool = false
     @Published public var errorMessage: String? = nil
     
-    @Published public var apiEndpoint: String = "http://127.0.0.1:5080"
+    @Published public var apiEndpoint: String = "http://127.0.0.1:9119"
     
     public init(service: any HermesService) {
         self.service = service

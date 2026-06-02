@@ -4,7 +4,7 @@ public struct MainView: View {
     @StateObject private var viewModel: HermesViewModel
     @State private var navigationSelection: NavigationItem? = .dashboard
     
-    public init(service: any HermesService = MockHermesService()) {
+    public init(service: any HermesService = DynamicHermesService()) {
         self._viewModel = StateObject(wrappedValue: HermesViewModel(service: service))
     }
     
