@@ -2,97 +2,153 @@ import SwiftUI
 
 public struct DashboardView: View {
     @ObservedObject var viewModel: HermesViewModel
+    @AppStorage("HermesServiceMode") private var serviceMode = HermesServiceMode.mock.rawValue
     
     public init(viewModel: HermesViewModel) {
         self.viewModel = viewModel
     }
     
     public var body: some View {
-        VStack(spacing: 20) {
-            // Header
-            VStack(spacing: 8) {
+        GeometryReader { geometry in
+            let isWide = geometry.size.width > 1000
+            
+            VStack(alignment: .leading, spacing: 0) {
+                ScrollView {
+                    Group {
+                        if isWide {
+                            HStack(alignment: .top, spacing: 20) {
+                                // Left/Center: Hero Area
+                                heroColumn
+                                    .frame(maxWidth: .infinity)
+                                
+                                // Right: Context Rail
+                                contextRailColumn
+                                    .frame(width: 300)
+                            }
+                        } else {
+                            VStack(spacing: 24) {
+                                heroColumn
+                                contextRailColumn
+                            }
+                        }
+                    }
+                    .padding()
+                }
+            }
+        }
+        .background(Color.clear)
+        .task {
+            await viewModel.loadAllData()
+        }
+    }
+    
+    // MARK: - Subviews
+    
+    private var heroColumn: some View {
+        VStack(spacing: 24) {
+            // Solaris Orb and Heading
+            VStack(spacing: 10) {
                 HermesOrbView(state: viewModel.status?.state ?? .idle)
-                    .padding(.top, 20)
+                    .frame(height: 150)
+                    .padding(.top, 10)
                 
-                Text(viewModel.isPendingResponse ? "Hermes is processing..." : "Hermes is listening")
-                    .font(.system(size: 22, weight: .bold))
+                Text(viewModel.isPendingResponse ? "Solaris is processing..." : "Solaris is listening")
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.white)
                 
-                if let status = viewModel.status {
-                    StatusCard(status: status)
-                        .padding(.horizontal)
-                        .frame(maxWidth: 500)
-                    
-                    if status.gatewayRunning != nil {
-                        LocalDiagnosticsCard(status: status)
-                            .padding(.horizontal)
-                            .frame(maxWidth: 500)
-                    }
-                }
+                Text(calmingSubtitle)
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.5))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+            }
+            
+            // Error panel if active
+            if let error = viewModel.errorMessage {
+                ErrorCard(message: error)
+                    .frame(maxWidth: 480)
             }
             
             // Quick action chips
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    QuickActionChip(label: "Check relay health", icon: "bolt.fill") {
-                        Task { await viewModel.executeQuickAction("Check relay health") }
-                    }
-                    QuickActionChip(label: "Summarize logs", icon: "list.bullet.rectangle") {
-                        Task { await viewModel.executeQuickAction("Summarize latest logs") }
-                    }
-                    QuickActionChip(label: "Restart watchdog", icon: "arrow.clockwise") {
-                        Task { await viewModel.executeQuickAction("Restart watchdog") }
-                    }
-                    QuickActionChip(label: "Test providers", icon: "network") {
-                        Task { await viewModel.executeQuickAction("Test providers") }
-                    }
-                }
-                .padding(.horizontal)
-            }
-            .frame(height: 36)
-            
-            // Diagnostic Timeline / Mini-Runs
-            VStack(alignment: .leading, spacing: 10) {
-                Text("DIAGNOSTIC TIMELINE")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.5))
-                    .padding(.horizontal)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("QUICK ACTION TELEMETRY")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.45))
+                    .padding(.horizontal, 4)
                 
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        if let error = viewModel.errorMessage {
-                            ErrorCard(message: error)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        QuickActionChip(label: "Check relay health", icon: "bolt.fill") {
+                            Task { await viewModel.executeQuickAction("Check relay health") }
                         }
-                        
-                        if viewModel.runs.isEmpty {
-                            VStack(spacing: 8) {
-                                Image(systemName: "bolt.horizontal")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.white.opacity(0.2))
-                                Text("No recent timeline records")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.white.opacity(0.4))
-                            }
-                            .padding(.top, 40)
-                        } else {
-                            ForEach(viewModel.runs.prefix(2)) { run in
-                                CommandResultCard(run: run)
-                            }
+                        QuickActionChip(label: "Summarize logs", icon: "list.bullet.rectangle") {
+                            Task { await viewModel.executeQuickAction("Summarize latest logs") }
+                        }
+                        QuickActionChip(label: "Restart watchdog", icon: "arrow.clockwise") {
+                            Task { await viewModel.executeQuickAction("Restart watchdog") }
+                        }
+                        QuickActionChip(label: "Test providers", icon: "network") {
+                            Task { await viewModel.executeQuickAction("Test providers") }
                         }
                     }
-                    .padding(.horizontal)
                 }
             }
+            .frame(maxWidth: 480)
             
-            Spacer()
+            // Last Context Execution mini card
+            if let lastRun = viewModel.runs.first {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("LAST CONTEXT EXECUTION")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white.opacity(0.45))
+                        .padding(.horizontal, 4)
+                    
+                    CommandResultCard(run: lastRun)
+                }
+                .frame(maxWidth: 480)
+            }
             
-            // Float command box
+            Spacer(minLength: 20)
+            
+            // Floating Command input capsule
             CommandBar(text: $viewModel.currentInput, isPending: viewModel.isPendingResponse) {
                 Task { await viewModel.sendCommand() }
             }
-            .padding([.horizontal, .bottom])
-            .frame(maxWidth: 700)
+            .frame(maxWidth: 480)
+            .padding(.bottom, 10)
         }
-        .background(Color.clear)
+    }
+    
+    private var contextRailColumn: some View {
+        let mode = HermesServiceMode(rawValue: serviceMode) ?? .mock
+        return DashboardContextRail(
+            mode: mode,
+            status: viewModel.status,
+            runs: viewModel.runs,
+            logs: viewModel.logs,
+            onQuickAction: { action in
+                Task { await viewModel.executeQuickAction(action) }
+            },
+            onSwapMode: { newMode in
+                serviceMode = newMode.rawValue
+                UserDefaults.standard.set(newMode.rawValue, forKey: "HermesServiceMode")
+                UserDefaults.standard.set(newMode == .mock, forKey: "UseMockService")
+                Task {
+                    await viewModel.loadAllData()
+                }
+            }
+        )
+    }
+    
+    private var calmingSubtitle: String {
+        let mode = HermesServiceMode(rawValue: serviceMode) ?? .mock
+        switch mode {
+        case .mock:
+            return "Solaris is running in Mock Mode. All visual telemetry is sandboxed."
+        case .diagnostics:
+            return "Solaris is monitoring local process logs and PID states."
+        case .rest:
+            return "Solaris is polling REST API telemetry from live gateway."
+        }
     }
 }

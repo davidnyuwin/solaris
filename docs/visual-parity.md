@@ -202,6 +202,28 @@ Actual runtime screenshot has now been captured for the polished Settings interf
 
 This screenshot should be used to guide future replacement of concept mockups once the Dashboard is also polished.
 
+---
+
+## Batch 4: Dashboard Layout Polish (June 2, 2026)
+
+### ✅ What Changed
+*   **Three-Column Dashboard Layout:** Successfully refactored `DashboardView.swift` to align with the visual target. The parent split view serves as the left column, while the DashboardView splits into a centered Hero column and a right-side Context rail column.
+*   **Centered Hero Area:** Rebuilt the center column to feature the volumetric Solaris orb prominently, alongside large status titles, customized mode descriptions, a horizontally scrollable quick actions chip bar, and the latest command execution result box.
+*   **DashboardContextRail Component:** Added a right-side glassmorphic context rail containing:
+    *   **System Summary:** Displaying connection modes, gateway state statuses, uptime, and active jobs.
+    *   **Recent Activity:** Tracking the last 3 command execution runs with inline status check circles.
+    *   **Latest Signal:** Showing the most recent warning/error/info logs with compact severity badges, or showing a stable note when signals are quiet.
+    *   **Suggested Next Action:** Proposing dynamic, context-specific developer recommendations based on the active mode.
+*   **Polished Premium CommandBar:** Rebuilt `CommandBar.swift` as a floating glassmorphic capsule with `VisualEffectView`, rounded border gradients, a safe diagnostics-specific placeholder, and visual state send buttons.
+*   **Adaptive Layout Support:** Configured the view with a width threshold (`1000px`). When compressed, the context rail stacks below the hero area cleanly to support dynamic resizing.
+
+### ⚠️ What Remains
+*   **Dashboard Parity Achieved:** Evolving the Dashboard to match visual specifications is complete. No remaining layout parity gaps exist.
+
+### 💡 Visual Compromises & Technical Decisions
+*   **Manual Screen Capturing:** To complete visual check-pointing for Batch 4, a fresh actual runtime screenshot of the polished Dashboard should be manually captured next.
+
+
 
 
 
