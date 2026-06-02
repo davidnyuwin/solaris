@@ -235,6 +235,24 @@ This completes the runtime screenshot checkpoint for the major v0.2 visual polis
 - Local Diagnostics
 - Settings
 
+---
+
+## v0.2 Visual Polish Complete
+
+The major v0.2 visual polish checkpoints are complete:
+
+- Dashboard runtime screenshot captured
+- Local Diagnostics runtime screenshot captured
+- Settings runtime screenshot captured
+- Runtime screenshots now guide public presentation
+
+Remaining future polish belongs in v0.3 or later:
+- App bundle packaging
+- Signed `.app` workflow
+- Runtime screenshot refresh after future UI changes
+- Optional live Hermes transport investigation
+
+
 
 
 
