@@ -8,6 +8,7 @@ Solaris is a native macOS companion/control surface for Hermes Agent.
 
 It includes a polished mock mode, local diagnostics for Hermes process/log visibility, and an experimental read-only REST adapter for future Hermes dashboard API support. Inspired by native macOS assistant designs, it provides soft glassmorphism, responsive diagnostic visualizations, and low-latency interaction cards to control your local workflows.
 
+[![CI](https://github.com/davidnyuwin/solaris/actions/workflows/ci.yml/badge.svg)](https://github.com/davidnyuwin/solaris/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![macOS: 14+](https://img.shields.io/badge/macOS-14%2B-blue.svg)
 ![Swift: 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)

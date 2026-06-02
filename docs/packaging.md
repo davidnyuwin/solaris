@@ -144,6 +144,28 @@ open dist/Solaris.app
 ```
 *Note: If the Finder icon is still stale, relaunching Finder (`killall Finder`) or restarting your macOS Dock (`killall Dock`) will typically force an immediate visual refresh.*
 
+
+---
+
+## ⚙️ GitHub Actions CI Pipeline
+
+Solaris includes an automated continuous integration pipeline defined at `.github/workflows/ci.yml`. This pipeline runs on a macOS runner (`macos-latest`) to validate each push and pull request targeting the `main` branch.
+
+### Pipeline Stages
+1. **Build & Verify (`build` job):**
+   * **Compiler Verification:** Compiles the Swift codebase (`swift build`) to ensure there are no compilation syntax errors or warnings.
+   * **Smoke Test Semantics:** Executes the non-interactive API smoke test runner (`./scripts/smoke-test.sh`).
+   * **Secret Scanner Check:** Executes the project-wide repository scan (`./scripts/secret-scan.sh`) to detect committed high-risk API keys, raw paths, or local files.
+2. **Package & Codesign (`package` job):**
+   * **Packaging Automation:** Runs the unified app builder script with full parameters (`./scripts/build-app.sh --sign --zip`).
+   * **Package Validation:** Verifies file existence (`Solaris.app`, executable bin, `.icns` files), runs the `plutil` plist linter, and runs strict `codesign --verify` on the generated package.
+   * **CI Release Artifacts:** Packages the release ZIP bundle and uploads it to GitHub's Actions storage as a downloadable development run attachment (`Solaris-v0.3.0-dev`).
+
+> [!IMPORTANT]
+> **CI Artifact Purpose & Limitations:**
+> * **Testing Only:** Zipped packages generated on the CI runner use the standard ad-hoc signature (`-`) for structural integrity tests only.
+> * **Not Production Ready:** These development artifacts are **not notarized** or signed using an Apple Developer ID. Downloading and running them on external macOS machines will be blocked by Gatekeeper unless manual trust controls are overridden.
+
 ---
 
 ## 🛠️ Future Release Pipelines (v0.4 and Later)
