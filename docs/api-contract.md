@@ -1,15 +1,19 @@
 # Hermes Companion — Verified API Contract
 
 > [!IMPORTANT]
-> **Status:** `VERIFIED & AUDITED` (June 2, 2026)
-> This document details the verified API contracts between the **Hermes Companion macOS App** and the actual local running **Hermes Studio daemon** (parsed from the active FastAPI `web_server.py` and `main.py` source codes inside `/Applications/Hermes Studio.app`).
+> **Status:** `VERIFIED / UNAVAILABLE (June 2, 2026)`
+> **Conclusion:** Direct diagnostic checks have confirmed that the bundled Python interpreter inside `/Applications/Hermes Studio.app` is **missing the required FastAPI and Uvicorn packages**. 
+> As a result, starting the dashboard server via the bundled interpreter fails, and the local REST API (default port `9119`) is **unavailable** in this local installation.
+> 
+> The API contracts documented below have been verified against the underlying source files, but they are currently **non-functional/offline**. `LiveHermesService` is preserved in the app code as a future-compatible integration, but must run in **Mock Mode** by default.
 
 ---
 
 ## ⚙️ Real Host & Port Discovery
 *   **Daemon Executable:** `/Applications/Hermes Studio.app/Contents/Resources/python/bin/python3 -m hermes_cli.main gateway run --replace`
 *   **Active Log Directory:** `~/.hermes/logs/`
-*   **Real Web Server Port:** The verified default port is **`9119`** (served on `http://127.0.0.1:9119` via `hermes dashboard --port 9119`).
+*   **Real Web Server Port:** The verified default port is **`9119`**, but is **offline** because the required backend libraries (`fastapi`, `uvicorn`) are not packaged in the application's bundled resources.
+*   **Discovery Result:** Port `9119` is unlistening. Probes to `http://127.0.0.1:9119/api/status` fail to connect.
 
 ---
 
@@ -17,7 +21,7 @@
 
 ### 1. GET /api/status
 *   **Purpose:** Retrieves active runtime states, daemon connection markers, and task metrics to populate the dashboard metrics view.
-*   **Audit Status:** `CONFIRMED / MISMATCH`
+*   **Audit Status:** `CONFIRMED / UNAVAILABLE (Missing FastAPI)`
 *   **Path Mismatch:** The proposed path `/status` must be corrected to `/api/status`.
 *   **Response Shape Mismatch:** 
     *   *Proposed:* Returns structured state strings (`idle`/`listening`/`processing`/`error`), uptime, and active jobs.
@@ -50,7 +54,7 @@
 
 ### 2. GET /api/sessions (Proposed as GET /runs)
 *   **Purpose:** Fetches the timeline of historical prompt actions and diagnostics for list and search views.
-*   **Audit Status:** `MISMATCH` (Path & Wrapper Payload)
+*   **Audit Status:** `MISMATCH / UNAVAILABLE (Server Offline)`
 *   **Path Mismatch:** The proposed path `/runs` does not exist. The verified path is `/api/sessions` (supporting `limit` and `offset` query parameters) or `/api/sessions/search?q={query}`.
 *   **Response Shape Mismatch:**
     *   *Proposed:* `[HermesRun]`
@@ -78,7 +82,7 @@
 
 ### 3. GET /api/logs
 *   **Purpose:** Extracts system console lines and daemon logs for real-time developer diagnostics.
-*   **Audit Status:** `MISMATCH` (JSON Structure Mismatch)
+*   **Audit Status:** `MISMATCH / UNAVAILABLE (Server Offline)`
 *   **Path Mismatch:** Proposed `/logs` must be `/api/logs`. Supports queries: `file` (default `"agent"`), `lines` (default 100), `level`, and `search`.
 *   **Response Shape Mismatch:**
     *   *Proposed:* List of structured objects (`[LogLine]`).
@@ -99,7 +103,7 @@
 
 ### 4. GET /api/providers/oauth (Proposed as GET /providers)
 *   **Purpose:** Obtains performance indexes, latencies, and connectivity state of active LLM relays.
-*   **Audit Status:** `MISMATCH / NOT FOUND`
+*   **Audit Status:** `MISMATCH / NOT FOUND / UNAVAILABLE (Server Offline)`
 *   **Path Mismatch:** The proposed `/providers` health metric path does not exist. The closest verified endpoint is `/api/providers/oauth` which lists registered authorization accounts. Capabilites and models info are located at `/api/model/info` and `/api/model/options`.
 *   **Verified Model Info Payload:**
     ```json
@@ -119,7 +123,7 @@
 
 ### 5. POST /api/sessions/{session_id}/messages (Proposed as POST /command)
 *   **Purpose:** Dispatches user queries and automated prompt routines to the agent core.
-*   **Audit Status:** `MISMATCH` (Session-Based Streaming)
+*   **Audit Status:** `MISMATCH / UNAVAILABLE (WebSockets Offline)`
 *   **Path Mismatch:** There is no blocking, atomic `/command` POST route. Execution is session-scoped. Chat and terminal integrations operate over real-time WebSockets:
     *   `ws://127.0.0.1:5080/api/ws` — Embedded chat handler.
     *   `ws://127.0.0.1:5080/api/events` — Pub/Sub live event broadcast stream.

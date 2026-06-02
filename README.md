@@ -63,10 +63,10 @@ swift test
 
 The app uses `DynamicHermesService` by default. This proxy dynamically switches between the mock data provider and the live REST integration depending on the **Developer Mock Data Mode** toggle in your in-app **Settings**:
 
-*   **Mock Service (default):** Safely isolated inside a local Swift actor (`MockHermesService`) for offline design iterations.
-*   **Live REST Service (`LiveHermesService`):** Connects directly to the verified Hermes Studio local endpoint at **`http://127.0.0.1:9119`**.
+*   **Mock Service (default):** Safely isolated inside a local Swift actor (`MockHermesService`) for offline design iterations. Recommended for this installation.
+*   **Live REST Service (`LiveHermesService`):** Designed to connect directly to the local Hermes Studio endpoint at **`http://127.0.0.1:9119`**.
 
-During **Phase 1**, the live service supports:
+During **Phase 1**, the live service structure supports:
 1. `GET /api/status` mapped from raw DTOs to local `HermesStatus` states.
 2. `GET /api/sessions` (runs history) mapped to lists of `HermesRun`.
 3. `GET /api/logs` mapped and parsed into diagnostic `LogLine` consoles.
@@ -83,10 +83,11 @@ To verify endpoint connectivity without relying on standard unit test compilatio
 ```
 
 ### ⚠️ Phase 1 Boundaries & Technical Limitations
+*   **Local Web Server Offline:** Direct system diagnostic checks confirmed that the bundled Python interpreter inside `/Applications/Hermes Studio.app` is **missing the FastAPI and Uvicorn packages**. Consequently, the local dashboard REST server cannot start and port **`9119`** does not listen. 
+*   **Mock Mode Default:** Because the local REST API is unavailable, the application operates in **Mock Data Mode** by default to maintain active UI/UX iterations. `LiveHermesService` remains fully implemented and verified against the daemon codebase, serving as a future-compatible integration once the Python dependencies are resolved.
 *   **Read-Only Scope:** Phase 1 integration maps status values, session timelines, and trace console outputs over REST.
 *   **Commands Unimplemented:** Sending command prompts in live mode is currently blocked; all submissions report a custom `"Live command transport not implemented yet"` response.
 *   **Mocked Telemetries:** Active model performance latency health (`ProviderHealth`) remains safely mocked until a dedicated server health-check API is confirmed.
-*   **Offline Fallback:** If your local daemon web interface is down (e.g. missing bundled `fastapi` dependencies in your app resources), the companion degrades gracefully, reporting a friendly connection warning in Settings and allowing a seamless switch to **Mock Data Mode** to keep design iterations intact.
 
 ---
 
