@@ -364,6 +364,105 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertEqual(snap.state, .notConfigured)
         XCTAssertEqual(snap.hostLabel, "Not configured")
     }
+    
+    // MARK: - Batch 2B Command Builder Tests
+    
+    func testRemoteCommandBuilderAllowsKnownCommands() throws {
+        let whichArgs = try RemoteCommandBuilder.buildArguments(for: .which, hermesCommandBase: "hermes")
+        XCTAssertEqual(whichArgs, ["which", "hermes"])
+        
+        let versionArgs = try RemoteCommandBuilder.buildArguments(for: .version, hermesCommandBase: "/path/to/hermes")
+        XCTAssertEqual(versionArgs, ["/path/to/hermes", "--version"])
+        
+        let statusArgs = try RemoteCommandBuilder.buildArguments(for: .status, hermesCommandBase: "hermes-cli")
+        XCTAssertEqual(statusArgs, ["hermes-cli", "status"])
+        
+        let gatewayArgs = try RemoteCommandBuilder.buildArguments(for: .gatewayStatus, hermesCommandBase: "hermes")
+        XCTAssertEqual(gatewayArgs, ["hermes", "gateway", "status"])
+    }
+    
+    func testRemoteCommandBuilderRejectsArbitraryCommands() {
+        XCTAssertThrowsError(try RemoteCommandBuilder.sanitiseHermesCommand("hermes; rm -rf /"))
+        XCTAssertThrowsError(try RemoteCommandBuilder.sanitiseHermesCommand("hermes && ls"))
+        XCTAssertThrowsError(try RemoteCommandBuilder.sanitiseHermesCommand("hermes|grep something"))
+    }
+    
+    func testRemoteCommandBuilderBlocksChat() {
+        XCTAssertThrowsError(try RemoteCommandBuilder.buildArguments(for: .chat(promptPlaceholder: "test"), hermesCommandBase: "hermes")) { error in
+            XCTAssertEqual(error as? RemoteCommandBuilderError, .chatExecutionNotYetApproved)
+        }
+    }
+    
+    // MARK: - Batch 2B Output Sanitiser Tests
+    
+    func testOutputSanitiserAnsiOSCControlStripping() {
+        let ansiInput = "\u{001B}[31mRed Text\u{001B}[0m and Normal Text"
+        let ansiResult = OutputSanitiser.sanitise(ansiInput)
+        XCTAssertEqual(ansiResult.text, "Red Text and Normal Text")
+        XCTAssertFalse(ansiResult.isTruncated)
+        
+        let oscInput = "\u{001B}]8;;http://example.com\u{0007}Click Here\u{001B}]8;;\u{0007}"
+        let oscResult = OutputSanitiser.sanitise(oscInput)
+        XCTAssertEqual(oscResult.text, "Click Here")
+        
+        // OSC ST termination style
+        let oscStInput = "\u{001B}]8;;http://example.com\u{001B}\\Link\u{001B}]8;;\u{001B}\\"
+        let oscStResult = OutputSanitiser.sanitise(oscStInput)
+        XCTAssertEqual(oscStResult.text, "Link")
+        
+        let controlInput = "Line 1\u{0000}\u{0007}Line 2\u{007F}Line 3\u{0085}Line 4"
+        let controlResult = OutputSanitiser.sanitise(controlInput)
+        XCTAssertEqual(controlResult.text, "Line 1Line 2Line 3Line 4")
+    }
+    
+    func testOutputSanitiserUnicodeLossyHandling() {
+        // Construct invalid UTF-8 bytes
+        let invalidBytes = Data([0xFF, 0xFE, 0xFD, 0x41, 0x42]) // AB with invalid prefix
+        let invalidStr = String(decoding: invalidBytes, as: UTF8.self) // Let swift produce standard replacement string
+        let sanitised = OutputSanitiser.sanitise(invalidStr)
+        XCTAssertTrue(sanitised.text.contains("\u{FFFD}"))
+        XCTAssertTrue(sanitised.text.contains("AB"))
+    }
+    
+    func testOutputSanitiserTruncation() {
+        let largeInput = String(repeating: "A", count: 70000)
+        let result = OutputSanitiser.sanitise(largeInput)
+        XCTAssertTrue(result.isTruncated)
+        XCTAssertEqual(result.text.count, 65536 + "\n[output truncated after 65536 bytes]".count)
+        XCTAssertTrue(result.text.hasSuffix("\n[output truncated after 65536 bytes]"))
+    }
+    
+    func testOutputSanitiserRedactionsAndPreservation() {
+        let bearerToken = "bearer " + "abc123xyz7890abc123"
+        let openaiKey = "sk-" + "123456789012345678901234567890"
+        
+        let input = """
+        User folder is /Users/sysadmin/project
+        Bearer Token: \(bearerToken)
+        OpenAI Key: \(openaiKey)
+        Private Key:
+        -----BEGIN PRIVATE KEY-----
+        MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC3
+        -----END PRIVATE KEY-----
+        Commit hash: 4ad9f5c9aa10cc3c49003489c26b068e8c95d661
+        Short hash: 715c9ad
+        API_TOKEN = 'secret-token-value-here'
+        """
+
+        
+        let result = OutputSanitiser.sanitise(input)
+        let text = result.text
+        
+        XCTAssertTrue(text.contains("User folder is ~/project"))
+        XCTAssertTrue(text.contains("Bearer [REDACTED]"))
+        XCTAssertTrue(text.contains("[REDACTED_KEY]"))
+        XCTAssertTrue(text.contains("[REDACTED_PRIVATE_KEY]"))
+        XCTAssertTrue(text.contains("API_TOKEN: [REDACTED]"))
+        
+        // Assert preservation of git commit hashes
+        XCTAssertTrue(text.contains("Commit hash: 4ad9f5c9aa10cc3c49003489c26b068e8c95d661"))
+        XCTAssertTrue(text.contains("Short hash: 715c9ad"))
+    }
 }
 
 
