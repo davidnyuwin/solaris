@@ -7,32 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Added
-- Command+R keyboard shortcut for safe Local Diagnostics refresh
-- Native menu command for Refresh Diagnostics (disabled on non-diagnostics views and during active refresh)
-- Shortcut hint displayed on the in-app refresh button
-- Export Redacted Diagnostics menu command (Command+Shift+E)
-- User-selected text export for privacy-safe diagnostics summaries via NSSavePanel
-- In-app Export… button in Local Diagnostics logs panel
-- Native Pause/Resume Diagnostics Logs menu command (Command+Shift+P)
-- Keyboard shortcut for pausing and resuming visible diagnostics logs
-- VoiceOver-friendly diagnostics refresh announcements using native NSAccessibility API
-- Improved visual status handling for read-only Hermes CLI timeout, unavailable, and parse warning states
-- Added dedicated user-facing explanations for each CLI status state (timeout, Python missing, non-zero exit, parse warnings)
-- Added `CLIStatusPresentation` model for structured CLI status-to-presentation mapping
+---
 
-### Accessibility
+## v0.8.0 - Native macOS Controls
+
+### Added
+- Native Diagnostics menu
+- Command+R shortcut for safe Local Diagnostics refresh
+- Export Redacted Diagnostics menu command
+- Command+Shift+E shortcut for diagnostics export
+- User-selected text export via `NSSavePanel`
+- Pause/Resume Diagnostics Logs menu command
+- Command+Shift+P shortcut for pausing and resuming visible diagnostics logs
+- VoiceOver-friendly diagnostics refresh announcements
+
+### Changed
+- Improved CLI status failure presentation for timeout, missing Python, non-zero exit, empty stdout, and parse warning states
 - Added clearer accessibility values for read-only Hermes CLI status states
-- "Read-only CLI Status" row now exposes per-state explanation as accessibility value
-- VoiceOver-friendly diagnostics refresh announcements using native NSAccessibility API
-- Manual diagnostics refreshes announce success or failure
-- Scheduled refresh failures announce without repeating noisy success messages
-- Copy and export actions announce success
 
 ### Security
-- Diagnostic exports always redact local paths, process IDs, and token-like strings
-- Diagnostic exports require explicit user save-panel confirmation
-- Export never writes automatically without NSSavePanel
+- Diagnostics export always uses the redacted diagnostics summary path
+- Export requires explicit save-panel confirmation
+- Refresh, export, and pause/resume commands remain gated to Local Diagnostics
+- No new Hermes integration, profile discovery, WebSocket, command sending, or mutating commands were added
+
+### Notes
+- Scheduled refresh success remains silent to avoid VoiceOver announcement spam
+- Scheduled refresh failures are throttled to avoid repeated identical announcements
 
 ---
 
