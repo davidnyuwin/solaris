@@ -132,3 +132,14 @@ We recommend that Batch 2 focuses strictly on **Local Diagnostics & Alignment**:
 1.  **Grouped Panes:** Rebuild `ProvidersView` to group details into "Parsed System Logs" and "Local Processes".
 2.  **Diagnostics Console Window:** Implement a styled monospaced console panel in the UI to list live system log lines tagged with unified color badges (`[INFO]`, `[WARN]`, `[ERROR]`).
 3.  **Process Badge States:** Render structured column rows showing active process lists (PIDs) with colored status badges.
+
+---
+
+## Runtime Screenshots Captured
+
+Actual runtime screenshots have now been captured for:
+- Dashboard
+- Local Diagnostics
+- Settings
+
+These should be used to guide the next visual polish batch before replacing README concept mockups.
