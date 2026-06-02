@@ -38,10 +38,13 @@ public struct SettingsView: View {
                 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        // Section 1: Connection Mode
+                        // Section 1: Remote Host Mode
+                        remoteHostSection
+                        
+                        // Section 2: Connection Mode
                         connectionModeSection(isWide: isWide)
                         
-                        // Section 2: Cards details
+                        // Section 3: Cards details
                         if isWide {
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(spacing: 16) {
@@ -81,6 +84,203 @@ public struct SettingsView: View {
     
     // MARK: - Sections
     
+    // MARK: - Remote Host Section
+
+    @AppStorage("RemoteHost") private var remoteHost = ""
+    @AppStorage("RemoteUsername") private var remoteUsername = ""
+    @AppStorage("RemotePort") private var remotePort = RemoteHostSettings.defaultPort
+    @AppStorage("RemoteHermesCommand") private var remoteHermesCommand = RemoteHostSettings.defaultHermesCommand
+
+    @State private var remoteTestStatus: RemoteHermesStatusSnapshot.ConnectionState = .notConfigured
+
+    private var remoteHostSection: some View {
+        SettingsCard(
+            title: "Remote Host Mode",
+            subtitle: "Connect to a remote Hermes host over SSH for read-only status checks.",
+            iconName: "terminal"
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Host / SSH alias
+                HStack(spacing: 10) {
+                    Text("Host")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 70, alignment: .leading)
+                    TextField("hermes-host.local", text: $remoteHost)
+                        .textFieldStyle(.plain)
+                        .foregroundColor(.white)
+                        .onChange(of: remoteHost) { _ in
+                            viewModel.clearRemoteStatus()
+                            remoteTestStatus = .notConfigured
+                        }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.35))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+
+                // Username
+                HStack(spacing: 10) {
+                    Text("User")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 70, alignment: .leading)
+                    TextField("Optional", text: $remoteUsername)
+                        .textFieldStyle(.plain)
+                        .foregroundColor(.white)
+                        .onChange(of: remoteUsername) { _ in
+                            viewModel.clearRemoteStatus()
+                            remoteTestStatus = .notConfigured
+                        }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.35))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+
+                // Port
+                HStack(spacing: 10) {
+                    Text("Port")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 70, alignment: .leading)
+                    TextField("22", value: $remotePort, formatter: NumberFormatter())
+                        .textFieldStyle(.plain)
+                        .foregroundColor(.white)
+                        .frame(width: 80)
+                        .onChange(of: remotePort) { _ in
+                            viewModel.clearRemoteStatus()
+                            remoteTestStatus = .notConfigured
+                        }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.35))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+
+                // Hermes command
+                HStack(spacing: 10) {
+                    Text("Command")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 70, alignment: .leading)
+                    TextField("hermes", text: $remoteHermesCommand)
+                        .textFieldStyle(.plain)
+                        .foregroundColor(.white)
+                        .onChange(of: remoteHermesCommand) { _ in
+                            viewModel.clearRemoteStatus()
+                            remoteTestStatus = .notConfigured
+                        }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.35))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+
+                // Test button + status
+                HStack {
+                    Button(action: testRemoteConnection) {
+                        HStack(spacing: 6) {
+                            if viewModel.isTestingRemoteConnection {
+                                ProgressView()
+                                    .scaleEffect(0.5)
+                                    .frame(width: 12, height: 12)
+                            } else {
+                                Image(systemName: "bolt.horizontal.fill")
+                                    .font(.system(size: 10))
+                            }
+                            Text(viewModel.isTestingRemoteConnection ? "Testing..." : "Test Remote Connection")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(remoteHost.isEmpty || viewModel.isTestingRemoteConnection
+                            ? Color.white.opacity(0.04)
+                            : Color.hermesTeal.opacity(0.12))
+                        .foregroundColor(remoteHost.isEmpty || viewModel.isTestingRemoteConnection
+                            ? .white.opacity(0.3)
+                            : .hermesTeal)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(remoteHost.isEmpty || viewModel.isTestingRemoteConnection
+                                    ? Color.clear
+                                    : Color.hermesTeal.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(remoteHost.isEmpty || viewModel.isTestingRemoteConnection)
+
+                    Spacer()
+
+                    Text(remoteStatusText)
+                        .font(.system(size: 10))
+                        .foregroundColor(remoteStatusColor)
+                        .lineLimit(2)
+                }
+
+                // Info text
+                Text("Uses your macOS SSH agent for authentication. No passwords or keys are stored in Solaris.")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            .padding(.vertical, 4)
+        }
+        .padding(.horizontal)
+    }
+
+    private var remoteStatusText: String {
+        switch remoteTestStatus {
+        case .notConfigured:
+            return "Configure a host to test the SSH connection."
+        case .testing:
+            return "Running allowlisted checks on remote host..."
+        case .connected:
+            return "Connected. Remote Hermes is reachable."
+        case .failed(let reason):
+            return reason
+        }
+    }
+
+    private var remoteStatusColor: Color {
+        switch remoteTestStatus {
+        case .notConfigured: return .white.opacity(0.45)
+        case .testing: return .amber
+        case .connected: return .emerald
+        case .failed: return .rose
+        }
+    }
+
+    private func testRemoteConnection() {
+        let settings = RemoteHostSettings(
+            host: remoteHost,
+            username: remoteUsername,
+            port: remotePort,
+            hermesCommand: remoteHermesCommand
+        )
+        remoteTestStatus = .testing
+        Task {
+            await viewModel.testRemoteConnection(settings: settings)
+            remoteTestStatus = viewModel.remoteHostStatus.state
+        }
+    }
+
     private func connectionModeSection(isWide: Bool) -> some View {
         SettingsCard(
             title: "Connection Mode",
@@ -321,6 +521,7 @@ public struct SettingsView: View {
             VStack(spacing: 8) {
                 PhaseStatusRow(name: "Mock Mode", status: "Operational", color: .emerald)
                 PhaseStatusRow(name: "Local Diagnostics", status: "Operational", color: .emerald)
+                PhaseStatusRow(name: "Remote Host Mode", status: "Read-Only", color: .amber)
                 PhaseStatusRow(name: "Experimental REST", status: "Read-Only", color: .amber)
                 PhaseStatusRow(name: "WebSocket Command Channel", status: "Not Implemented", color: .rose)
             }

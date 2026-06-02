@@ -1,0 +1,55 @@
+import Foundation
+
+/// Immutable snapshot of a remote Hermes host connection test result.
+/// Separate from local diagnostics — the remote host is the source of truth.
+public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
+    /// The display label for the configured remote host.
+    public let hostLabel: String
+
+    /// Whether `which hermes` found the Hermes binary on the remote host.
+    public let hermesFound: Bool
+
+    /// Parsed `hermes --version` output (first line only).
+    public let hermesVersion: String?
+
+    /// Parsed `hermes status` output (first meaningful line or nil for error).
+    public let statusSummary: String?
+
+    /// When the check was run.
+    public let lastCheckedAt: Date
+
+    /// Short, sanitised error message if any command failed.  Never contains
+    /// raw hostnames, usernames, paths, or token-like strings.
+    public let errorMessage: String?
+
+    // MARK: - Connection states
+
+    public enum ConnectionState: Sendable, Equatable {
+        case notConfigured
+        case testing
+        case connected
+        case failed(String)
+    }
+
+    /// Derives the high-level connection state.
+    public var state: ConnectionState {
+        if hostLabel == "Not configured" || hostLabel.isEmpty {
+            return .notConfigured
+        }
+        if let error = errorMessage {
+            return .failed(error)
+        }
+        return .connected
+    }
+
+    // MARK: - Factory
+
+    public static let notConfigured = RemoteHermesStatusSnapshot(
+        hostLabel: "Not configured",
+        hermesFound: false,
+        hermesVersion: nil,
+        statusSummary: nil,
+        lastCheckedAt: Date(),
+        errorMessage: nil
+    )
+}

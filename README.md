@@ -156,9 +156,9 @@ open dist/Solaris.app
 ## 🗺️ Roadmap
 
 ### v0.9 — Remote Hermes Host Mode
-- [ ] SSH remote command runner (read-only allowlist)
-- [ ] Remote Host settings (host, user, port)
-- [ ] Remote `hermes status` and diagnostics display
+- [x] SSH remote command runner (read-only allowlist) — Batch 1
+- [x] Remote Host settings (host, user, port, Hermes command)
+- [ ] Remote `hermes status` display in Local Diagnostics view
 - [ ] SSH one-shot `hermes chat -q` probe
 - [ ] SSH PTY interactive chat session
 

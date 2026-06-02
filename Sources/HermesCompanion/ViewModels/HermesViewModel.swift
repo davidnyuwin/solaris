@@ -355,6 +355,115 @@ public class HermesViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Remote Host Mode (v0.9 Batch 1)
+
+    /// Current remote host status — populated after a connection test.
+    @Published public var remoteHostStatus: RemoteHermesStatusSnapshot = .notConfigured
+
+    /// True while a remote connection test is in progress.
+    @Published public var isTestingRemoteConnection: Bool = false
+
+    private let remoteSSHExecutor = RemoteSSHExecutor()
+
+    /// Reset remote status (e.g. when settings change).
+    public func clearRemoteStatus() {
+        remoteHostStatus = .notConfigured
+    }
+
+    /// Run all three allowlisted remote checks sequentially and update
+    /// `remoteHostStatus` with the result.
+    @MainActor
+    public func testRemoteConnection(settings: RemoteHostSettings) async {
+        isTestingRemoteConnection = true
+        remoteHostStatus = RemoteHermesStatusSnapshot(
+            hostLabel: settings.displayLabel,
+            hermesFound: false,
+            hermesVersion: nil,
+            statusSummary: nil,
+            lastCheckedAt: Date(),
+            errorMessage: nil
+        )
+
+        // 1. which hermes
+        let whichResult = await remoteSSHExecutor.execute(
+            command: .whichHermes, settings: settings
+        )
+        let hermesFound = whichResult.exitCode == 0
+            && !whichResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        // 2. hermes --version
+        let versionResult = await remoteSSHExecutor.execute(
+            command: .hermesVersion, settings: settings
+        )
+        let versionLine = versionResult.exitCode == 0
+            ? versionResult.stdout
+                .components(separatedBy: .newlines)
+                .first?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            : nil
+
+        // 3. hermes status
+        let statusResult = await remoteSSHExecutor.execute(
+            command: .hermesStatus, settings: settings
+        )
+        let statusSummary = statusResult.exitCode == 0
+            ? statusResult.stdout
+                .components(separatedBy: .newlines)
+                .first?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            : nil
+
+        // Collect errors from any step
+        var errors: [String] = []
+        if whichResult.timedOut || versionResult.timedOut || statusResult.timedOut {
+            errors.append("Timed out")
+        }
+        if !hermesFound {
+            errors.append("Hermes not found")
+        }
+        if whichResult.exitCode != 0 && !whichResult.timedOut {
+            errors.append(sanitiseSSHError(whichResult.stderr))
+        }
+        if versionResult.exitCode != 0 && !versionResult.timedOut && versionResult.exitCode != 127 {
+            errors.append("Version check failed")
+        }
+        if statusResult.exitCode != 0 && !statusResult.timedOut && statusResult.exitCode != 127 {
+            errors.append("Status check failed")
+        }
+
+        let errorMessage = errors.isEmpty ? nil : errors.joined(separator: "; ")
+
+        remoteHostStatus = RemoteHermesStatusSnapshot(
+            hostLabel: settings.displayLabel,
+            hermesFound: hermesFound,
+            hermesVersion: versionLine,
+            statusSummary: statusSummary,
+            lastCheckedAt: Date(),
+            errorMessage: errorMessage
+        )
+
+        isTestingRemoteConnection = false
+    }
+
+    /// Redact common SSH error patterns so we never show raw hostnames,
+    /// usernames, or paths in the UI.
+    private func sanitiseSSHError(_ stderr: String) -> String {
+        let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "SSH connection failed" }
+        // Short common patterns
+        if trimmed.contains("Connection refused") { return "Connection refused" }
+        if trimmed.contains("Connection timed out") { return "Connection timed out" }
+        if trimmed.contains("Permission denied") { return "Permission denied" }
+        if trimmed.contains("Host key verification") { return "Host key verification failed" }
+        if trimmed.contains("No route to host") { return "No route to host" }
+        if trimmed.contains("Name or service not known") { return "Host not found" }
+        // Fallback: just the first line, redact anything that looks like a path
+        let firstLine = trimmed.components(separatedBy: .newlines).first ?? ""
+        let redacted = firstLine
+            .replacingOccurrences(of: #"/[^\s:]+"#, with: "[path]", options: .regularExpression)
+        return redacted.isEmpty ? "SSH command failed" : redacted
+    }
+
     private func resetExportFeedbackAfterDelay() {
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)

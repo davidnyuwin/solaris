@@ -269,6 +269,101 @@ final class HermesCompanionTests: XCTestCase {
         let kind = classifyCLIStatus("Something unexpected")
         XCTAssertEqual(kind, .unknown)
     }
+    
+    // MARK: - Remote Host Mode Tests
+    
+    func testRemoteCommandEnumCases() {
+        // All three allowlisted commands must be present
+        let allCommands = RemoteHermesCommand.allCases
+        XCTAssertTrue(allCommands.contains(.whichHermes))
+        XCTAssertTrue(allCommands.contains(.hermesVersion))
+        XCTAssertTrue(allCommands.contains(.hermesStatus))
+        XCTAssertEqual(allCommands.count, 3)
+    }
+    
+    func testRemoteCommandWhichArguments() {
+        let args = RemoteHermesCommand.whichHermes.remoteArguments(hermesCommandBase: "hermes")
+        XCTAssertEqual(args, ["which", "hermes"])
+    }
+    
+    func testRemoteCommandVersionArguments() {
+        let args = RemoteHermesCommand.hermesVersion.remoteArguments(hermesCommandBase: "hermes")
+        XCTAssertEqual(args, ["hermes", "--version"])
+    }
+    
+    func testRemoteCommandStatusArguments() {
+        let args = RemoteHermesCommand.hermesStatus.remoteArguments(hermesCommandBase: "hermes")
+        XCTAssertEqual(args, ["hermes", "status"])
+    }
+    
+    func testRemoteCommandCustomBase() {
+        let args = RemoteHermesCommand.hermesStatus.remoteArguments(hermesCommandBase: "/custom/path/hermes")
+        XCTAssertEqual(args, ["/custom/path/hermes", "status"])
+    }
+    
+    func testRemoteCommandEnumDoesNotContainUnsafeCommands() {
+        let rawValues = RemoteHermesCommand.allCases.map(\.rawValue)
+        XCTAssertFalse(rawValues.contains { $0.contains("send") })
+        XCTAssertFalse(rawValues.contains { $0.contains("model") })
+        XCTAssertFalse(rawValues.contains { $0.contains("gateway") })
+        XCTAssertFalse(rawValues.contains { $0.contains("config") })
+    }
+    
+    func testRemoteHostSettingsValidation() {
+        let empty = RemoteHostSettings()
+        XCTAssertFalse(empty.isValid)
+        XCTAssertEqual(empty.displayLabel, "Not configured")
+        
+        let valid = RemoteHostSettings(host: "hermes-host.local")
+        XCTAssertTrue(valid.isValid)
+        XCTAssertEqual(valid.displayLabel, "hermes-host.local")
+        XCTAssertEqual(valid.userAtHost, "hermes-host.local")
+        
+        let withUser = RemoteHostSettings(host: "hermes-host.local", username: "admin")
+        XCTAssertEqual(withUser.userAtHost, "admin@hermes-host.local")
+    }
+    
+    func testRemoteHostSettingsDefaults() {
+        let settings = RemoteHostSettings()
+        XCTAssertEqual(settings.port, 22)
+        XCTAssertEqual(settings.hermesCommand, "hermes")
+        XCTAssertEqual(settings.host, "")
+        XCTAssertEqual(settings.username, "")
+    }
+    
+    func testRemoteHermesStatusSnapshotConnected() {
+        let snap = RemoteHermesStatusSnapshot(
+            hostLabel: "my-host",
+            hermesFound: true,
+            hermesVersion: "Hermes v1.0",
+            statusSummary: "Status: OK",
+            lastCheckedAt: Date(),
+            errorMessage: nil
+        )
+        XCTAssertEqual(snap.state, .connected)
+        XCTAssertTrue(snap.hermesFound)
+        XCTAssertEqual(snap.hermesVersion, "Hermes v1.0")
+        XCTAssertEqual(snap.statusSummary, "Status: OK")
+    }
+    
+    func testRemoteHermesStatusSnapshotFailed() {
+        let snap = RemoteHermesStatusSnapshot(
+            hostLabel: "my-host",
+            hermesFound: false,
+            hermesVersion: nil,
+            statusSummary: nil,
+            lastCheckedAt: Date(),
+            errorMessage: "Connection refused"
+        )
+        XCTAssertEqual(snap.state, .failed("Connection refused"))
+        XCTAssertFalse(snap.hermesFound)
+    }
+    
+    func testRemoteHermesStatusSnapshotNotConfigured() {
+        let snap = RemoteHermesStatusSnapshot.notConfigured
+        XCTAssertEqual(snap.state, .notConfigured)
+        XCTAssertEqual(snap.hostLabel, "Not configured")
+    }
 }
 
 

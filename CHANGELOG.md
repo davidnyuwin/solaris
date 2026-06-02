@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Planning
-- Reframed Solaris architecture around Remote Hermes Host Mode over SSH
-- Documented remote source-of-truth model for Hermes host access
-- Created transport matrix for SSH-based remote Hermes communication
+### Added
+- Remote Host Mode foundation
+- SSH-based read-only connection test for remote Hermes hosts
+- Strict allowlist for remote Hermes status commands (which, --version, status)
+- Remote host settings UI (host, username, port, Hermes command path)
+
+### Security
+- Remote SSH execution uses fixed allowlisted commands only
+- Solaris does not store SSH private keys or passwords
+- Mutating Hermes commands remain blocked
+- Custom Hermes command path is sanitised for shell metacharacters
 
 ---
 
