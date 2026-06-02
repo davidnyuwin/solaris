@@ -166,3 +166,12 @@ These should be used to guide the next visual polish batch before replacing READ
 *   **Offline Telemetry Fallbacks:** In Mock Mode, since `HermesStatus` lacks system daemon values, we automatically fallback to active states to ensure mock representations look fully alive and functional.
 *   **Manual Screen Capturing:** To complete visual check-pointing, actual runtime screenshots of this updated screen should be manually recaptured and compared.
 
+---
+
+## Batch 2 Runtime Screenshot Captured (June 2, 2026)
+Following the implementation of the Batch 2 Diagnostics UI Polish, a fresh actual runtime screenshot of the **Local Diagnostics** dashboard has been captured and saved to:
+[runtime-local-diagnostics.png](file:///Users/dnguyen/Documents/Projects/solaris/docs/screenshots/runtime-local-diagnostics.png)
+
+This updated screenshot captures the high-fidelity glassmorphic container layout, the monospace log console with severity badges, and the Privacy Mode redactions in action.
+
+
