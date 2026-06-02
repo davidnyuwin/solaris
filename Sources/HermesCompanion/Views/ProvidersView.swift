@@ -23,9 +23,58 @@ public struct ProvidersView: View {
                         Text("Local process, log, and dashboard API visibility for Hermes Agent.")
                             .font(.system(size: 11.5))
                             .foregroundColor(.white.opacity(0.5))
+                        
+                        HStack(spacing: 8) {
+                            Text(formatTimestamp(viewModel.lastDiagnosticsRefreshAt))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.35))
+                                .accessibilityLabel("Last diagnostics refresh time")
+                            
+                            if viewModel.isRefreshingDiagnostics {
+                                ProgressView()
+                                    .scaleEffect(0.5)
+                                    .frame(width: 10, height: 10)
+                                    .colorInvert()
+                            }
+                            
+                            if let error = viewModel.diagnosticsRefreshError {
+                                Text("⚠️ \(error)")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.rose.opacity(0.8))
+                                    .accessibilityLabel("Refresh error: \(error)")
+                            }
+                        }
+                        .padding(.top, 2)
                     }
                     
                     Spacer()
+                    
+                    Button(action: {
+                        Task {
+                            await viewModel.refreshDiagnostics()
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(viewModel.isRefreshingDiagnostics ? "Refreshing..." : "Refresh")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.white.opacity(viewModel.isRefreshingDiagnostics ? 0.03 : 0.08))
+                        .foregroundColor(viewModel.isRefreshingDiagnostics ? .white.opacity(0.4) : .white)
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                        )
+                    }
+                    .disabled(viewModel.isRefreshingDiagnostics)
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 10)
+                    .padding(.top, 4)
+                    .accessibilityLabel("Refresh local diagnostics")
                     
                     Toggle(isOn: $isPrivacyModeActive) {
                         Text("Privacy Mode")
@@ -258,7 +307,29 @@ public struct ProvidersView: View {
             DiagnosticsLogConsole(logs: viewModel.logs, isPrivacyActive: isPrivacyModeActive)
         }
     }
+    
+    private func formatTimestamp(_ date: Date?) -> String {
+        guard let date = date else { return "Last checked: Never" }
+        let interval = Date().timeIntervalSince(date)
+        
+        if interval < 5 {
+            return "Last checked: Just now"
+        } else if interval < 60 {
+            return "Last checked: <1 min ago"
+        } else if interval < 3600 {
+            let minutes = Int(interval / 60)
+            return "Last checked: \(minutes) min ago"
+        } else if interval < 86400 {
+            let hours = Int(interval / 3600)
+            return "Last checked: \(hours) hour\(hours == 1 ? "" : "s") ago"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm"
+            return "Last checked: \(formatter.string(from: date))"
+        }
+    }
 }
+
 
 // MARK: - Supporting Component
 

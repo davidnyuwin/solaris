@@ -16,6 +16,11 @@ public class HermesViewModel: ObservableObject {
     
     @Published public var apiEndpoint: String = "http://127.0.0.1:9119"
     
+    // Batch 1 Diagnostics controls
+    @Published public var isRefreshingDiagnostics: Bool = false
+    @Published public var lastDiagnosticsRefreshAt: Date?
+    @Published public var diagnosticsRefreshError: String?
+    
     public init(service: any HermesService) {
         self.service = service
     }
@@ -33,9 +38,32 @@ public class HermesViewModel: ObservableObject {
             self.runs = try await runsFetch
             self.providers = try await providersFetch
             self.logs = try await logsFetch
+            
+            self.lastDiagnosticsRefreshAt = Date()
         } catch {
             errorMessage = "Failed to synchronize status with Hermes Agent: \(error.localizedDescription)"
         }
+    }
+    
+    public func refreshDiagnostics() async {
+        isRefreshingDiagnostics = true
+        diagnosticsRefreshError = nil
+        
+        do {
+            async let statusFetch = service.getStatus()
+            async let providersFetch = service.getProviderHealth()
+            async let logsFetch = service.getRecentLogs()
+            
+            self.status = try await statusFetch
+            self.providers = try await providersFetch
+            self.logs = try await logsFetch
+            
+            self.lastDiagnosticsRefreshAt = Date()
+        } catch {
+            diagnosticsRefreshError = "Diagnostics refresh failed: \(error.localizedDescription)"
+        }
+        
+        isRefreshingDiagnostics = false
     }
     
     public func sendCommand() async {
