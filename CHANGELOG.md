@@ -7,22 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+---
+
+## v0.7.0 - Safe Diagnostics Controls
+
 ### Added
 - Manual refresh control for Local Diagnostics
 - Last checked timestamp for diagnostics refreshes
 - Refreshing/error states for diagnostics updates
 - Pause/resume control for diagnostics log display
 - Copy redacted diagnostics summary action
-- Conservative auto-refresh interval selector for Local Diagnostics (Manual / 30 sec / 1 min / 5 min)
-- Cancellation-aware diagnostics refresh scheduler (stops on view disappear, skips overlapping sweeps)
+- Conservative auto-refresh interval selector for Local Diagnostics
+- Cancellation-aware diagnostics refresh scheduler
 - Persistent default-on Privacy Mode for diagnostics views
 - Accessibility labels, hints, and values for Local Diagnostics controls and status cards
 
 ### Security
-- Copied diagnostics summaries redact local paths, process IDs, and token-like strings
 - Auto-refresh uses only existing read-only diagnostics paths
 - Auto-refresh prevents overlapping refresh sweeps
-- Privacy Mode remains default-on via `@AppStorage("DiagnosticsPrivacyModeEnabled")`
+- Copied diagnostics summaries redact local paths, process IDs, and token-like strings
+- Privacy Mode remains default-on
 
 ---
 
