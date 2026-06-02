@@ -1,5 +1,9 @@
 # Solaris ☄️
 
+<p align="center">
+  <img src="docs/screenshots/app-icon.png" width="160" height="160" alt="Solaris App Icon">
+</p>
+
 Solaris is a native macOS companion/control surface for Hermes Agent.
 
 It includes a polished mock mode, local diagnostics for Hermes process/log visibility, and an experimental read-only REST adapter for future Hermes dashboard API support. Inspired by native macOS assistant designs, it provides soft glassmorphism, responsive diagnostic visualizations, and low-latency interaction cards to control your local workflows.
