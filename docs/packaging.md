@@ -1,66 +1,124 @@
 # Solaris — Local App Bundle Packaging
 
-This document outlines the visual structure, compilation workflows, and future milestones for packaging **Solaris** into a standalone, Finder-launchable macOS application bundle (`Solaris.app`).
+This document outlines the visual structure, compilation workflows, codesigning mechanisms, and packaging procedures for compiling **Solaris** into a standalone, Finder-launchable macOS application bundle (`Solaris.app`) and ZIP artifact.
 
 ---
 
 ## 🚀 How to Build and Package Locally
 
-To build a local, standalone release version of Solaris and structure it into a standard macOS application bundle, execute the bundler script:
+To build a local release version of Solaris and package/sign it, run the unified packaging script:
 
 ```bash
 # Make the bundler script executable (if not already)
 chmod +x scripts/build-app.sh
 
-# Run the local bundler script
+# Option 1: Default (Build local unsigned app bundle)
 ./scripts/build-app.sh
+
+# Option 2: Ad-hoc codesign the built bundle
+./scripts/build-app.sh --sign
+
+# Option 3: Package the bundle as a local ZIP artifact
+./scripts/build-app.sh --zip
+
+# Option 4: Build, ad-hoc codesign, and create ZIP package
+./scripts/build-app.sh --sign --zip
 ```
 
-This script:
-1. Compiles the Solaris Swift target in high-optimization Release mode (`swift build -c release`).
-2. Creates the target bundle hierarchy under `dist/Solaris.app/`.
-3. Copies the Release binary into the bundle's execution space (`Contents/MacOS/Solaris`).
-4. Generates a valid and verified `Info.plist` container mapping standard macOS execution keys.
+### Script Execution Flow
+1. **Compilation:** Compiles the Solaris Swift target in high-optimization Release mode (`swift build -c release`).
+2. **Structure:** Establishes the target bundle hierarchy under `dist/Solaris.app/`.
+3. **Executable:** Copies the Release binary into the bundle's execution space (`Contents/MacOS/Solaris`).
+4. **App Icon:** Downsamples the high-res master icon to construct `Contents/Resources/Solaris.icns`.
+5. **Metadata:** Generates and validates the target `Contents/Info.plist`.
+6. **Codesigning (Optional):** Signs the bundle with an ad-hoc identity (`-`) if `--sign` is passed.
+7. **Packaging (Optional):** Generates `dist/Solaris-v0.3.0-dev.zip` using `ditto` (or `zip` fallback) if `--zip` is passed.
 
 ---
 
 ## 📂 App Bundle Layout
 
-The resulting bundle matches the standard Apple Bundle Structure:
+The resulting build directory structure matches standard macOS specifications:
 
 ```text
 dist/
-  └── Solaris.app/
-        └── Contents/
-              ├── MacOS/
-              │     └── Solaris     # Release executable binary
-              ├── Resources/        # Solaris.icns multi-resolution compiled icon
-              └── Info.plist        # Application configuration metadata
+  ├── Solaris.app/
+  │     └── Contents/
+  │           ├── MacOS/
+  │           │     └── Solaris     # Release executable binary
+  │           ├── Resources/        # Solaris.icns compiled icon bundle
+  │           └── Info.plist        # Application configuration metadata
+  └── Solaris-v0.3.0-dev.zip        # Consolidated local ZIP distribution artifact
 ```
 
 ---
 
 ## 🕹️ How to Launch the Application
 
-Once packaged, the application is ready for local developer verification:
+Once packaged, you can launch the bundle:
 
 *   **From Terminal:**
     ```bash
     open dist/Solaris.app
     ```
 *   **From Finder:**
-    Navigate to `~/Documents/Projects/solaris/dist/` in Finder and double-click **`Solaris`** (the glowing orb package).
+    Navigate to `dist/` in Finder and double-click **`Solaris`** (the glowing orb package).
 
 ---
 
-## ⚠️ Scope Boundaries & Technical Limitations
+## 🔐 Codesigning & Packaging Workflows
 
-> [!IMPORTANT]
-> **This is a Local Packaging Baseline (dev-stage).** It is meant strictly for local developer loops, local performance testing, and design verification on your macOS system.
+The v0.3 release pipeline adds two critical local packaging milestones:
 
-*   **Unsigned & Unnotarized:** The bundle is generated locally without codesigning certificates (`adhoc` or developer identities) or Apple notarization verification.
-*   **Not Sandboxed:** The application is packaged without `.entitlements` or Sandbox confinement. This allows the application to utilize developer-tool shell permissions to perform local diagnostics (e.g. searching processes via `pgrep` and reading logs from `~/.hermes/logs/`).
-*   **Gatekeeper Restraints:** If you copy this `.app` bundle to another machine, macOS Gatekeeper will block its launch as "untrusted/broken" until attributes are stripped (via `xattr -d com.apple.quarantine`) or custom system authorizations are granted.
+### 1. Optional Ad-Hoc Codesigning (`--sign`)
+Ad-hoc signing validates code integrity and prevents runtime modifications from invalidating the package.
+*   **Identity:** Uses the ad-hoc signing identity `-`.
+*   **Validation:** Instantly runs `codesign --verify` to guarantee the integrity of the binary structure and nested components.
+*   **Execution Commands:**
+    ```bash
+    codesign --force --deep --sign - dist/Solaris.app
+    codesign --verify --deep --strict --verbose=2 dist/Solaris.app
+    codesign -dv --verbose=4 dist/Solaris.app
+    ```
+
+> [!WARNING]
+> **Ad-hoc signing is for local code integrity only.**
+> It is **not** Developer ID signing, it is **not** notarized by Apple, and it does **not** prepare the app for App Store or trusted production distribution. Gatekeeper assessment (`spctl --assess`) will flag the signature as rejected for system-wide trust. This is expected and acceptable for local development.
+
+### 2. Local ZIP Artifact Workflow (`--zip`)
+To package the app for local transfer, a ZIP packaging workflow creates an archive at:
+```text
+dist/Solaris-v0.3.0-dev.zip
+```
+The script uses macOS native `ditto` to preserve standard package metadata, file permissions, resource forks, and Symlinks:
+```bash
+ditto -c -k --keepParent dist/Solaris.app dist/Solaris-v0.3.0-dev.zip
+```
+If `ditto` is unavailable, the pipeline falls back gracefully to standard `zip -r`.
+
+---
+
+## 🛡️ Sandbox Deferral & Local Diagnostics Restrictions
+
+macOS App Sandboxing has been **deliberately deferred** at this stage of the baseline design.
+
+### Why Sandboxing is Deferred
+Our **Local Diagnostics Mode** requires direct access to host process state and system information. In particular, it performs:
+1.  **Process Tracking:** Runs `pgrep`, `ps`, and similar tools to identify active process IDs (PIDs) running local nodes.
+2.  **Network Inspections:** Queries `lsof` to find which local ports are bound by the nodes.
+3.  **Log File Reading:** Inspects files directly inside the hidden user path `~/.hermes/logs/` or other user-defined locations.
+
+### Sandbox Incompatibility Details
+Under Apple's App Sandbox guidelines:
+*   **Process Isolation:** The application is blocked from inspecting, interacting with, or checking the status of processes outside its own sandbox container (blocking `pgrep`, `ps`, and `kill` signals).
+*   **System Commands:** Executing external binaries or querying active network listeners via `lsof` is strictly forbidden.
+*   **File Access:** Reading arbitrary system/user files (e.g. `~/.hermes/logs/`) is blocked unless explicitly selected by the user via an interactive `NSOpenPanel`.
+
+### Future Design Alternatives for Sandboxing
+To successfully enable App Sandboxing in future iterations without breaking diagnostics, we will investigate:
+*   **Privileged Helper Tool:** Designing a launchd helper tool installed with root/system permissions (managed via `SMAppService`) to execute diagnostic checks on the host.
+*   **Network-Only API Diagnostics:** Transitioning Local Diagnostics from host process scraping to querying structured HTTP or WebSocket diagnostic endpoints exposed directly by local nodes (eliminating the need to inspect host PIDs or run shell utilities).
+*   **Security-Scoped Bookmarks:** Prompts users to select their local workspace directory once, storing a security-scoped bookmark to retain continuous read access to workspace logs.
 
 ---
 
@@ -74,7 +132,7 @@ The local bundler (`scripts/build-app.sh`) implements an automated, multi-resolu
 
 ### 🔄 Finder / Dock Icon Refreshing
 
-macOS aggressive caches Finder and Dock icons. If you previously launched Solaris under a generic default sheet, the system may delay displaying the new Solaris icon. 
+macOS aggressively caches Finder and Dock icons. If you previously launched Solaris under a generic default sheet, the system may delay displaying the new Solaris icon. 
 
 To force macOS to invalidate the cache and load the new `.icns` resources:
 ```bash
@@ -84,17 +142,17 @@ touch dist/Solaris.app
 # Open the bundle via the Launch Services daemon
 open dist/Solaris.app
 ```
-*Note: If the Finder icon is still stale, relaunching Finder (`killall Finder`) or restarting your macOS Dock (`killall Dock`) will typically force immediate visual refresh.*
+*Note: If the Finder icon is still stale, relaunching Finder (`killall Finder`) or restarting your macOS Dock (`killall Dock`) will typically force an immediate visual refresh.*
 
 ---
 
-## 🛠️ Future Release Pipelines (v0.3 and Later)
+## 🛠️ Future Release Pipelines (v0.4 and Later)
 
 To transition Solaris from a local developer package into a clean public distribution tool, the following packaging milestones remain in the roadmap:
 
 1.  **App Icon Asset Pipeline:** (*Completed*) Compiled multi-resolution `Solaris.icns` resources directly inside `Contents/Resources`.
-2.  **Ad-Hoc / Developer Signing:** Integrate local codesigning (`codesign -s -`) inside `build-app.sh` to prevent launch verification warnings.
+2.  **Ad-Hoc Signing & Local packaging:** (*Completed*) Ad-hoc code integrity signing (`--sign`) and native ditto ZIP creation (`--zip`).
 3.  **Sandbox Entitlements:** Build a safe, isolated `Solaris.entitlements` file mapping only required operations.
 4.  **Notarization and Stapling:** Wire Apple Notarization CLI tasks (`xcrun altool` or `xcrun notarytool`) to certify builds with Apple Security systems.
-5.  **Durable Distribution Formats:** Script the creation of disk images (`.dmg`) or zipped installers (`.zip`) as ready-to-run GitHub Release attachments.
+5.  **Durable Distribution Formats:** Script the creation of disk images (`.dmg`) as ready-to-run GitHub Release attachments.
 6.  **CI Packaging Actions:** Automate release tagging, bundle creation, and artifact attachments using GitHub Actions workflows.

@@ -119,17 +119,20 @@ To verify endpoint connectivity without relying on standard unit test compilatio
 
 ## 📦 Local App Bundle
 
-Solaris can be packaged into a local, unsigned, standalone macOS `.app` bundle for development testing and Finder launching:
+Solaris can be compiled, signed, and packaged into a standalone macOS `.app` bundle or local ZIP archive:
 
 ```bash
-# Compile in release mode and bundle the app
+# Build the local unsigned app bundle
 ./scripts/build-app.sh
+
+# Build, ad-hoc codesign, and package as a ZIP archive
+./scripts/build-app.sh --sign --zip
 
 # Open the app bundle from your terminal
 open dist/Solaris.app
 ```
 
-*Note: This is an unsigned, unnotarized development-stage package. It is intended strictly for local verification.*
+*Note: Ad-hoc signing is for local code integrity verification only. It is not notarized or signed with a Developer ID. For details on constraints, diagnostics, and sandboxing, see [packaging.md](docs/packaging.md).*
 
 ---
 
