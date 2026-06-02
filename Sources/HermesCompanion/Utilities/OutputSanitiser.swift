@@ -43,14 +43,17 @@ public struct OutputSanitiser: Sendable {
         })
         
         // 4. ANSI/OSC Escape Sequence Stripping
-        // ANSI CSI escapes: \x1B\[[0-9;]*[a-zA-Z]
-        if let ansiRegex = try? NSRegularExpression(pattern: "\\x1B\\[[0-9;]*[a-zA-Z]", options: []) {
+        let esc = "\u{001B}"
+        let bel = "\u{0007}"
+        
+        // ANSI CSI escapes: ESC [ <numbers> <letter>
+        if let ansiRegex = try? NSRegularExpression(pattern: "\(esc)\\[[0-9;]*[a-zA-Z]", options: []) {
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
             text = ansiRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
         }
         
-        // OSC sequences terminated by BEL (\x07) or ST (\x1B\\)
-        if let oscRegex = try? NSRegularExpression(pattern: "\\x1B\\][0-9]+;[^\\x07\\x1B]*(?:\\x07|\\x1B\\\\)", options: []) {
+        // OSC sequences terminated by BEL (ESC ] ... BEL) or ST (ESC ] ... ESC \)
+        if let oscRegex = try? NSRegularExpression(pattern: "\(esc)\\][0-9]+;[^\(bel)\(esc)]*(?:\(bel)|\(esc)\\\\)", options: []) {
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
             text = oscRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
         }
@@ -74,15 +77,16 @@ public struct OutputSanitiser: Sendable {
             text = pemRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "[REDACTED_PRIVATE_KEY]")
         }
         
-        // Redact generic variable assignments with secrets/keys/tokens/passwords (e.g. key = "value")
+        // Redact generic variable assignments with secrets/keys/tokens/passwords (e.g. API_TOKEN = "value")
         // But avoid matching non-secret keys by requiring 8+ chars and ignoring quotes or key-like variable declarations.
         if let assignmentRegex = try? NSRegularExpression(
-            pattern: "(?i)\\b(key|secret|token|password|passwd|client_secret|auth)[a-zA-Z0-9_-]*\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-\\.\\+]{8,}[\"']?",
+            pattern: "(?i)\\b([a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|client_secret|auth)[a-zA-Z0-9_-]*)\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-\\.\\+]{8,}[\"']?",
             options: []
         ) {
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
             text = assignmentRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "$1: [REDACTED]")
         }
+
         
         // 6. Path Normalisation (replace absolute /Users/... paths with ~/)
         if let pathRegex = try? NSRegularExpression(pattern: "/Users/[a-zA-Z0-9_.-]+", options: []) {
