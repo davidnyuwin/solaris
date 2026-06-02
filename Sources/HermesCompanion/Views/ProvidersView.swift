@@ -216,6 +216,12 @@ public struct ProvidersView: View {
                         }
                     }
                 }
+                
+                Text("Read-only CLI status checks are enabled in Local Diagnostics Mode.")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.35))
+                    .padding(.top, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

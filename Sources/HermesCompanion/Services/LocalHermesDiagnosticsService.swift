@@ -3,6 +3,8 @@ import Foundation
 public final class LocalHermesDiagnosticsService: HermesService, @unchecked Sendable {
     
     private let homeDir: URL
+    private let cliExecutor = HermesCLIExecutor()
+    private let cliParsers = HermesCLIParsers()
     
     public init() {
         self.homeDir = FileManager.default.homeDirectoryForCurrentUser
@@ -34,6 +36,21 @@ public final class LocalHermesDiagnosticsService: HermesService, @unchecked Send
             uptime = getProcessUptime(pid: pid)
         }
         
+        // Enrich with CLI status if available
+        var activeProvider: String? = nil
+        var activeModel: String? = nil
+        
+        do {
+            let cliResult = try await cliExecutor.execute(command: .status)
+            if cliResult.exitCode == 0 {
+                let parsed = cliParsers.parseStatus(cliResult.stdout)
+                activeProvider = parsed.activeProvider
+                activeModel = parsed.activeModel
+            }
+        } catch {
+            // Degrade gracefully; activeProvider/activeModel remain nil
+        }
+        
         return HermesStatus(
             state: isGatewayRunning ? .listening : .idle,
             uptimeSeconds: uptime,
@@ -45,7 +62,9 @@ public final class LocalHermesDiagnosticsService: HermesService, @unchecked Send
             gatewayLogFound: isGatewayLogFound,
             agentLogPath: agentLogURL.path,
             gatewayLogPath: gatewayLogURL.path,
-            gatewayPID: isGatewayRunning ? getGatewayPID() : nil
+            gatewayPID: isGatewayRunning ? getGatewayPID() : nil,
+            activeProvider: activeProvider,
+            activeModel: activeModel
         )
     }
     
@@ -55,6 +74,19 @@ public final class LocalHermesDiagnosticsService: HermesService, @unchecked Send
         let status = try await getStatus()
         
         var diagnosticsRuns: [HermesRun] = []
+        
+        if let provider = status.activeProvider, let model = status.activeModel {
+            diagnosticsRuns.append(
+                HermesRun(
+                    id: "diag-cli-info",
+                    timestamp: Date(),
+                    prompt: "Query Active Inference Configuration",
+                    response: "CLI reports active configuration: Provider is '\(provider)', Model is '\(model)'. Read-only CLI status checks are enabled.",
+                    isSuccess: true,
+                    durationMs: 8
+                )
+            )
+        }
         
         if status.gatewayRunning == true {
             diagnosticsRuns.append(
@@ -102,7 +134,7 @@ public final class LocalHermesDiagnosticsService: HermesService, @unchecked Send
         let hasAgentLog = fm.fileExists(atPath: agentLogURL.path)
         let hasGatewayLog = fm.fileExists(atPath: gatewayLogURL.path)
         
-        return [
+        var list = [
             ProviderHealth(
                 name: "Gateway Daemon Status",
                 isOnline: isProcessRunning(name: "hermes_cli"),
@@ -122,6 +154,27 @@ public final class LocalHermesDiagnosticsService: HermesService, @unchecked Send
                 successRate: 0.0
             )
         ]
+        
+        // Add active provider if found via CLI
+        do {
+            let cliResult = try await cliExecutor.execute(command: .status)
+            if cliResult.exitCode == 0 {
+                let parsed = cliParsers.parseStatus(cliResult.stdout)
+                if let provider = parsed.activeProvider, let model = parsed.activeModel {
+                    list.insert(
+                        ProviderHealth(
+                            name: "Inference: \(provider) (\(model))",
+                            isOnline: true,
+                            latencyMs: 0,
+                            successRate: 1.0
+                        ),
+                        at: 0
+                    )
+                }
+            }
+        } catch {}
+        
+        return list
     }
     
     public func getRecentLogs() async throws -> [LogLine] {
@@ -136,6 +189,37 @@ public final class LocalHermesDiagnosticsService: HermesService, @unchecked Send
         if let gatewayLogs = readLogFile(at: gatewayLogURL, limit: 50) {
             allLogLines.append(contentsOf: gatewayLogs)
         }
+        
+        // Add CLI recent events as LogLines if available
+        do {
+            let cliResult = try await cliExecutor.execute(command: .gatewayStatus)
+            if cliResult.exitCode == 0 {
+                let parsed = cliParsers.parseGatewayStatus(cliResult.stdout)
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                
+                for event in parsed.recentEvents {
+                    let trimmed = event.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard trimmed.starts(with: "[") else { continue }
+                    
+                    let parts = trimmed.components(separatedBy: "]")
+                    guard parts.count >= 2 else { continue }
+                    
+                    let datePart = parts[0].replacingOccurrences(of: "[", with: "")
+                    let msgPart = parts.dropFirst().joined(separator: "]").trimmingCharacters(in: .whitespacesAndNewlines)
+                    
+                    let date = formatter.date(from: datePart) ?? Date()
+                    allLogLines.append(
+                        LogLine(
+                            id: "cli-event-\(UUID().uuidString.prefix(6))",
+                            timestamp: date,
+                            level: "CLI",
+                            message: msgPart
+                        )
+                    )
+                }
+            }
+        } catch {}
         
         // Sort merged logs by timestamp descending (newest first)
         return allLogLines.sorted { $0.timestamp > $1.timestamp }

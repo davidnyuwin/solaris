@@ -22,6 +22,10 @@ public struct HermesStatus: Codable {
     public let gatewayLogPath: String?
     public let gatewayPID: String?
     
+    // Phase 4: CLI status enrichment
+    public let activeProvider: String?
+    public let activeModel: String?
+    
     public init(
         state: HermesState,
         uptimeSeconds: Int,
@@ -33,7 +37,9 @@ public struct HermesStatus: Codable {
         gatewayLogFound: Bool? = nil,
         agentLogPath: String? = nil,
         gatewayLogPath: String? = nil,
-        gatewayPID: String? = nil
+        gatewayPID: String? = nil,
+        activeProvider: String? = nil,
+        activeModel: String? = nil
     ) {
         self.state = state
         self.uptimeSeconds = uptimeSeconds
@@ -46,6 +52,8 @@ public struct HermesStatus: Codable {
         self.agentLogPath = agentLogPath
         self.gatewayLogPath = gatewayLogPath
         self.gatewayPID = gatewayPID
+        self.activeProvider = activeProvider
+        self.activeModel = activeModel
     }
 }
 
@@ -107,5 +115,48 @@ public struct HermesResponse: Codable {
         self.executionTimeMs = executionTimeMs
         self.success = success
         self.createdRun = createdRun
+    }
+}
+
+public struct HermesCLIStatusSnapshot: Sendable, Codable {
+    public var activeProvider: String?
+    public var activeModel: String?
+    public var messagingGatewayState: String?
+    public var dashboardState: String?
+    public var gatewayServiceStatus: String?
+    public var gatewayProcessID: String?
+    public var platformListeners: String?
+    public var activeProfile: String?
+    public var configVersion: String?
+    public var recentGatewayEvents: [String]
+    public var collectedAt: Date
+    public var errors: [String]
+    
+    public init(
+        activeProvider: String? = nil,
+        activeModel: String? = nil,
+        messagingGatewayState: String? = nil,
+        dashboardState: String? = nil,
+        gatewayServiceStatus: String? = nil,
+        gatewayProcessID: String? = nil,
+        platformListeners: String? = nil,
+        activeProfile: String? = nil,
+        configVersion: String? = nil,
+        recentGatewayEvents: [String] = [],
+        collectedAt: Date = Date(),
+        errors: [String] = []
+    ) {
+        self.activeProvider = activeProvider
+        self.activeModel = activeModel
+        self.messagingGatewayState = messagingGatewayState
+        self.dashboardState = dashboardState
+        self.gatewayServiceStatus = gatewayServiceStatus
+        self.gatewayProcessID = gatewayProcessID
+        self.platformListeners = platformListeners
+        self.activeProfile = activeProfile
+        self.configVersion = configVersion
+        self.recentGatewayEvents = recentGatewayEvents
+        self.collectedAt = collectedAt
+        self.errors = errors
     }
 }

@@ -2,7 +2,7 @@
 
 ## Status
 
-Transport discovery phase only. No live control has been implemented.
+Transport discovery phase complete. The first implementation path (v0.4) is read-only CLI status enrichment, not live command/control.
 
 ---
 

@@ -2,7 +2,15 @@
 
 ## Status
 
-Discovery only. No CLI wrapper has been implemented in Solaris.
+Read-only CLI status wrapper has been fully implemented in Local Diagnostics Mode.
+
+## v0.4 Read-Only CLI Wrapper Implementation
+
+Solaris now wraps only the allowlisted read-only commands:
+- `hermes status`
+- `hermes gateway status`
+
+Mutating or external side-effect commands remain blocked.
 
 ---
 
@@ -45,7 +53,7 @@ Path:
     Vite Dashboard: Stopped (No running PID found)
 
   Local Environment:
-    Hermes Home: /Users/dnguyen/.hermes
+    Hermes Home: /Users/username/.hermes
     Active Profile: default
     Config Version: 2
 
@@ -66,7 +74,7 @@ Path:
     Service Status: Stopped (Inactive)
     Process ID: None
     Platform Listeners: None
-    Active Log File: /Users/dnguyen/.hermes/logs/gateway.log
+    Active Log File: /Users/username/.hermes/logs/gateway.log
     Log Size: 2.1 KB
     Recent Events (Last 3):
       [2026-06-02 12:45:12] Gateway process terminated cleanly.
@@ -89,8 +97,8 @@ Path:
   └─────────────────────────────────────────────────────────┘
 
   ◆ Paths
-    Config:       /Users/dnguyen/.hermes/config.yaml
-    Secrets:      /Users/dnguyen/.hermes/.env
+    Config:       /Users/username/.hermes/config.yaml
+    Secrets:      /Users/username/.hermes/.env
     Install:      /Applications/Hermes Studio.app/Contents/Resources/python/lib/python3.12/site-packages
 
   ◆ API Keys
