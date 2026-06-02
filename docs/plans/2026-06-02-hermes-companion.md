@@ -13,7 +13,7 @@
 ## Directory Structure
 
 ```text
-/Users/dnguyen/Documents/Projects/solaris/
+~/Documents/Projects/solaris/
 ├── Package.swift
 ├── README.md
 ├── .gitignore

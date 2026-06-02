@@ -8,7 +8,7 @@
 
 ## ⚙️ Real Host & Port Discovery
 *   **Daemon Executable:** `/Applications/Hermes Studio.app/Contents/Resources/python/bin/python3 -m hermes_cli.main gateway run --replace`
-*   **Active Log Directory:** `/Users/dnguyen/.hermes/logs/`
+*   **Active Log Directory:** `~/.hermes/logs/`
 *   **Real Web Server Port:** The verified default port is **`9119`** (served on `http://127.0.0.1:9119` via `hermes dashboard --port 9119`).
 
 ---
@@ -26,9 +26,9 @@
         {
           "version": "0.6.7",
           "release_date": "2026-05-15",
-          "hermes_home": "/Users/dnguyen/.hermes",
-          "config_path": "/Users/dnguyen/.hermes/config.yaml",
-          "env_path": "/Users/dnguyen/.hermes/.env",
+          "hermes_home": "~/.hermes",
+          "config_path": "~/.hermes/config.yaml",
+          "env_path": "~/.hermes/.env",
           "config_version": 2,
           "latest_config_version": 2,
           "gateway_running": true,
