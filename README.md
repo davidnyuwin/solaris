@@ -18,6 +18,12 @@ Solaris is built as a **desktop control panel** rather than a generic chat shell
 - **Structured Cards**: Distinct responsive tiles displaying provider latency metrics, parsed error logs, and execution summaries.
 - **Capsule Command Bar**: Quick bottom command bar with micro-actions and attachment slots.
 
+### 📸 Screenshots
+
+| Dashboard | Local Diagnostics | Settings |
+| :---: | :---: | :---: |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Local Diagnostics](docs/screenshots/local-diagnostics.png) | ![Settings](docs/screenshots/settings.png) |
+
 ---
 
 ## ⚙️ Architecture
@@ -98,10 +104,12 @@ To verify endpoint connectivity without relying on standard unit test compilatio
 ---
 
 ## 🗺️ Roadmap
-- [ ] Connect Live local daemon via WebSocket / Server-Sent Events (SSE).
-- [ ] Add active system telemetry graphs for token-per-second counters.
-- [ ] Implement local database backup for runs timeline.
-- [ ] Build global floating hotkey HUD (Command + Shift + H) to wake up the orb.
+- [ ] Polish visual identity and icon
+- [ ] Add signed app bundle workflow
+- [ ] Improve local diagnostics parsing
+- [ ] Add optional REST dashboard support when available
+- [ ] Investigate WebSocket/event stream support
+- [ ] Add Keychain-backed credential storage if auth is ever required
 
 ## 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.
