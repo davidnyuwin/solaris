@@ -373,7 +373,7 @@ public struct ProvidersView: View {
                         HStack(spacing: 4) {
                             Image(systemName: viewModel.isDiagnosticsLogPaused ? "play.fill" : "pause.fill")
                                 .font(.system(size: 9))
-                            Text(viewModel.isDiagnosticsLogPaused ? "Resume Logs" : "Pause Logs")
+                            Text(viewModel.isDiagnosticsLogPaused ? "Resume Logs  ⌘⇧P" : "Pause Logs  ⌘⇧P")
                                 .font(.system(size: 10.5, weight: .medium))
                         }
                         .padding(.horizontal, 8)
@@ -384,7 +384,7 @@ public struct ProvidersView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(viewModel.isDiagnosticsLogPaused ? "Resume diagnostics log updates" : "Pause diagnostics log updates")
-                    .accessibilityHint("Freezes or resumes the visible diagnostics log display")
+                    .accessibilityHint("Freezes or resumes the visible diagnostics log display. Keyboard shortcut Command Shift P.")
                     
                     Button(action: {
                         viewModel.copyDiagnosticsSummaryToClipboard()

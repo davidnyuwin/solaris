@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export Redacted Diagnostics menu command (Command+Shift+E)
 - User-selected text export for privacy-safe diagnostics summaries via NSSavePanel
 - In-app Export… button in Local Diagnostics logs panel
+- Native Pause/Resume Diagnostics Logs menu command (Command+Shift+P)
+- Keyboard shortcut for pausing and resuming visible diagnostics logs
 
 ### Security
 - Diagnostic exports always redact local paths, process IDs, and token-like strings

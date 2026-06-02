@@ -42,6 +42,17 @@ struct DiagnosticsCommands: Commands {
             .disabled(!isDiagnosticsActive)
             .accessibilityLabel("Export redacted diagnostics summary to file")
             .accessibilityHint("Saves a privacy-safe diagnostics summary to a text file. Keyboard shortcut Command Shift E.")
+
+            Divider()
+
+            Button(viewModel?.isDiagnosticsLogPaused == true ? "Resume Diagnostics Logs" : "Pause Diagnostics Logs") {
+                guard isDiagnosticsActive, let vm = viewModel else { return }
+                vm.toggleDiagnosticsLogPause()
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(!isDiagnosticsActive)
+            .accessibilityLabel(viewModel?.isDiagnosticsLogPaused == true ? "Resume diagnostics log updates" : "Pause diagnostics log updates")
+            .accessibilityHint("Freezes or resumes the visible diagnostics log display. Keyboard shortcut Command Shift P.")
         }
     }
 }

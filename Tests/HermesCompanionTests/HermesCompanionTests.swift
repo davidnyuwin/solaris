@@ -187,6 +187,34 @@ final class HermesCompanionTests: XCTestCase {
         // Must include safe provider metadata
         XCTAssertTrue(summary.contains("Active Providers / Relays:"))
     }
+    
+    func testDiagnosticsLogPauseToggle() async {
+        let viewModel = HermesViewModel(service: MockHermesService())
+        
+        // Initially not paused
+        XCTAssertFalse(viewModel.isDiagnosticsLogPaused)
+        XCTAssertTrue(viewModel.pausedLogs.isEmpty)
+        
+        await viewModel.loadAllData()
+        let initialLogCount = viewModel.logs.count
+        XCTAssertGreaterThan(initialLogCount, 0)
+        
+        // Toggle pause on
+        viewModel.toggleDiagnosticsLogPause()
+        XCTAssertTrue(viewModel.isDiagnosticsLogPaused)
+        XCTAssertEqual(viewModel.pausedLogs.count, initialLogCount)
+        
+        // Adding new logs while paused should not affect paused snapshot
+        let extraLog = LogLine(id: "extra-1", timestamp: Date(), level: "INFO", message: "New log while paused")
+        viewModel.logs.append(extraLog)
+        XCTAssertEqual(viewModel.pausedLogs.count, initialLogCount)
+        XCTAssertGreaterThan(viewModel.logs.count, initialLogCount)
+        
+        // Toggle pause off — snapshot retained (display switches back to live logs)
+        viewModel.toggleDiagnosticsLogPause()
+        XCTAssertFalse(viewModel.isDiagnosticsLogPaused)
+        XCTAssertEqual(viewModel.pausedLogs.count, initialLogCount)
+    }
 }
 
 
