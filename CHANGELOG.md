@@ -5,23 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - 2026-06-02
+## v0.5.0 - Read-only CLI hardening
 
 ### Added
-- Parser fixtures (`docs/fixtures/`) for robust read-only parsing verification
-- Unit tests (`HermesCompanionTests`) for plain-text parser validation
-- User-facing "Hermes CLI Status" availability summary row in local diagnostics System Checks
-- Structured failure state tracking (`Unavailable`, `Timed out`, `Parse warning`, `Python missing`)
-- Integration of unit testing step into GitHub Actions CI pipelines
+- Sanitized parser fixtures for Hermes CLI output
+- CI-backed parser tests for read-only Hermes CLI parsing
+- CLI availability/failure state handling
+- Local Diagnostics CLI status row
+- Package version alignment for `Solaris-v0.5.0-dev.zip`
 
 ### Changed
-- Centralized application build and packaging scripts to v0.5.0-dev metadata
-- Prepopulated list of diagnostic runs with CLI configurations when active
+- Hardened parsing for missing fields, empty output, timeout, non-zero exit, and unexpected CLI output
+- Improved privacy redaction for local paths in parsed CLI output
+- Updated GitHub Actions packaging artifact to use the v0.5 development package name
+
+### Security
+- Maintains strict read-only CLI allowlist
+- Does not execute shell commands
+- Does not accept arbitrary CLI arguments
+- Does not call `hermes send`, `hermes model`, `model set`, `gateway restart`, `gateway stop`, or `hermes config show`
 
 ### Notes
-- Local Profiles Discovery is deferred.
-- Mutating commands, live control, config reading, and `hermes config show` remain strictly blocked.
-- WebSocket is unimplemented due to local dashboard API unavailability.
+- Local `swift test` may fail when only Command Line Tools are installed because XCTest is unavailable.
+- GitHub Actions macOS runners execute parser tests successfully using full Xcode.
+- Live command/control remains unimplemented.
+- Local Profiles Discovery is intentionally deferred.
 
 ---
 
