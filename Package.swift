@@ -7,7 +7,7 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "HermesCompanion", targets: ["HermesCompanion"])
+        .executable(name: "Solaris", targets: ["HermesCompanion"])
     ],
     dependencies: [],
     targets: [

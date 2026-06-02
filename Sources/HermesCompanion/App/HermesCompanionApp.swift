@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct HermesCompanionApp: App {
+struct SolarisApp: App {
     var body: some Scene {
         WindowGroup {
             MainView()

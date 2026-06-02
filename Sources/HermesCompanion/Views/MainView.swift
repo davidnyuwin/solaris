@@ -28,7 +28,7 @@ public struct MainView: View {
                         .foregroundColor(.white.opacity(0.6))
                 }
             }
-            .navigationTitle(navigationSelection?.rawValue ?? "Hermes Companion")
+            .navigationTitle(navigationSelection?.rawValue ?? "Solaris")
         }
         .task {
             await viewModel.loadAllData()

@@ -1,8 +1,8 @@
-# Hermes Companion ☄️
+# Solaris ☄️
 
-Hermes Companion is a native macOS companion/control surface for Hermes Agent.
+Solaris is a native macOS companion/control surface for Hermes Agent.
 
-It currently includes a polished mock mode, local diagnostics for Hermes process/log visibility, and an experimental read-only REST adapter for future Hermes dashboard API support. Inspired by native macOS assistant designs, it provides soft glassmorphism, responsive diagnostic visualizations, and low-latency interaction cards to control your local workflows.
+It includes a polished mock mode, local diagnostics for Hermes process/log visibility, and an experimental read-only REST adapter for future Hermes dashboard API support. Inspired by native macOS assistant designs, it provides soft glassmorphism, responsive diagnostic visualizations, and low-latency interaction cards to control your local workflows.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![macOS: 14+](https://img.shields.io/badge/macOS-14%2B-blue.svg)
@@ -12,7 +12,7 @@ It currently includes a polished mock mode, local diagnostics for Hermes process
 
 ## 🎨 Visual Design & Inspiration
 
-Hermes Companion is built as a **desktop control panel** rather than a generic chat shell:
+Solaris is built as a **desktop control panel** rather than a generic chat shell:
 - **Abstract Ambient Orb**: A glowing, breathing SwiftUI canvas visualizing the current Hermes state (*listening, processing, speaking, or error*).
 - **Glassmorphic Sidebar**: Translucent macOS native material listing active hosts, connections, and health configurations.
 - **Structured Cards**: Distinct responsive tiles displaying provider latency metrics, parsed error logs, and execution summaries.

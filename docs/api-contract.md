@@ -1,4 +1,4 @@
-# Hermes Companion — Verified API Contract
+# Solaris — Verified API Contract
 
 > [!IMPORTANT]
 > **Status:** `VERIFIED / PARTIALLY OFFLINE (June 2, 2026)`
