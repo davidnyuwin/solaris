@@ -125,10 +125,10 @@
 
 ### 5. POST /api/sessions/{session_id}/messages (Proposed as POST /command)
 *   **Purpose:** Dispatches user queries and automated prompt routines to the agent core.
-*   **Audit Status:** `MISMATCH / UNAVAILABLE (WebSockets Offline)`
+*   **Audit Status:** `MISMATCH / SOURCE-CONFIRMED ONLY (WebSockets Offline)`
 *   **Path Mismatch:** There is no blocking, atomic `/command` POST route. Execution is session-scoped. Chat and terminal integrations operate over real-time WebSockets:
-    *   `ws://127.0.0.1:5080/api/ws` — Embedded chat handler.
-    *   `ws://127.0.0.1:5080/api/events` — Pub/Sub live event broadcast stream.
-    *   `ws://127.0.0.1:5080/api/pty` — Interactive stdio pseudoterminal loop.
+    *   `ws://127.0.0.1:9119/api/ws` — Embedded chat handler (source-confirmed only).
+    *   `ws://127.0.0.1:9119/api/events` — Pub/Sub live event broadcast stream (source-confirmed only).
+    *   `ws://127.0.0.1:9119/api/pty` — Interactive stdio pseudoterminal loop (source-confirmed only).
 *   **Swift Integration Strategy:**
     Utilize standard `URLSessionWebSocketTask` inside `LiveHermesService` to open a socket to `/api/ws` or `/api/events` for bi-directional command processing, keeping the Siri-style orb reactive to live streaming tokens.
