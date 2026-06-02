@@ -1,6 +1,8 @@
 # Hermes Companion ☄️
 
-An elegant, open-source macOS native control surface and diagnostic panel for **Hermes Agent**. Inspired by native macOS assistant designs, it provides soft glassmorphism, responsive diagnostic visualizations, and low-latency interaction cards to control your local workflows.
+Hermes Companion is a native macOS companion/control surface for Hermes Agent.
+
+It currently includes a polished mock mode, local diagnostics for Hermes process/log visibility, and an experimental read-only REST adapter for future Hermes dashboard API support. Inspired by native macOS assistant designs, it provides soft glassmorphism, responsive diagnostic visualizations, and low-latency interaction cards to control your local workflows.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![macOS: 14+](https://img.shields.io/badge/macOS-14%2B-blue.svg)
@@ -85,11 +87,13 @@ To verify endpoint connectivity without relying on standard unit test compilatio
 ```
 
 ### ⚠️ Phase 1 Boundaries & Technical Limitations
-*   **Local Web Server Offline:** Direct system diagnostic checks confirmed that the bundled Python interpreter inside `/Applications/Hermes Studio.app` is **missing the FastAPI and Uvicorn packages**. Consequently, the local dashboard REST server cannot start and port **`9119`** does not listen. 
-*   **Mock Mode Default:** Because the local REST API is unavailable, the application operates in **Mock Data Mode** by default to maintain active UI/UX iterations. `LiveHermesService` remains fully implemented and verified against the daemon codebase, serving as a future-compatible integration once the Python dependencies are resolved.
-*   **Read-Only Scope:** Phase 1 integration maps status values, session timelines, and trace console outputs over REST.
-*   **Commands Unimplemented:** Sending command prompts in live mode is currently blocked; all submissions report a custom `"Live command transport not implemented yet"` response.
-*   **Mocked Telemetries:** Active model performance latency health (`ProviderHealth`) remains safely mocked until a dedicated server health-check API is confirmed.
+*   **No Confirmed Live Command/Control:** The app does **not** currently provide confirmed live command/control over Hermes. Full WebSocket, chat, and command transports are future work.
+*   **Local Web Server Offline:** In this local Hermes Studio installation, the dashboard API is **unavailable** because the required backend libraries (`FastAPI` and `Uvicorn`) are not packaged in the bundled python resource directory.
+*   **Experimental REST Mode:** Requires a running Hermes dashboard API on localhost. Because port `9119` is unlistening at runtime, the REST pathway remains offline by default.
+*   **Mock Mode Default:** Mock Mode is the default and safest mode for public demos. It runs completely locally in memory with simulated data, requiring no external processes or permissions.
+*   **Local Diagnostics Mode:** Safely reads local background process states and live logging records directly from the developer's machine (`~/.hermes/logs/agent.log` and `~/.hermes/logs/gateway.log`).
+*   **No Credentials Required:** The current application operates entirely without requesting, storing, or requiring any API keys or tokens.
+*   **Future Authentication Security:** Any future access tokens or authorization credentials must use the secure **macOS Keychain services API**, never in committed configuration files or UserDefaults.
 
 ---
 
