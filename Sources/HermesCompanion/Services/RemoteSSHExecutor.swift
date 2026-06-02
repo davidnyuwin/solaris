@@ -145,9 +145,18 @@ public final class RemoteSSHExecutor: Sendable {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
+            // Sendable flag so the timeout task and termination handler share
+            // the timed-out state without a data race.
+            final class TimeoutFlag: @unchecked Sendable {
+                private(set) var didTimeout = false
+                func set() { didTimeout = true }
+            }
+            let timeoutFlag = TimeoutFlag()
+
             let timeoutTask = Task {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 if process.isRunning {
+                    timeoutFlag.set()
                     process.terminate()
                 }
             }
@@ -167,7 +176,7 @@ public final class RemoteSSHExecutor: Sendable {
                     stdout: stdout,
                     stderr: stderr,
                     duration: duration,
-                    timedOut: !timeoutTask.isCancelled
+                    timedOut: timeoutFlag.didTimeout
                 )
                 continuation.resume(returning: result)
             }

@@ -388,6 +388,26 @@ public class HermesViewModel: ObservableObject {
         let whichResult = await remoteSSHExecutor.execute(
             command: .whichHermes, settings: settings
         )
+
+        // Early-exit if the SSH transport itself failed (exit 255) or timed out.
+        // This avoids 2 redundant failing SSH attempts against an unreachable host.
+        let sshTransportFailed = whichResult.exitCode == 255 || whichResult.timedOut
+        if sshTransportFailed {
+            let reason = whichResult.timedOut
+                ? "Timed out"
+                : sanitiseSSHError(whichResult.stderr)
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: false,
+                hermesVersion: nil,
+                statusSummary: nil,
+                lastCheckedAt: Date(),
+                errorMessage: reason
+            )
+            isTestingRemoteConnection = false
+            return
+        }
+
         let hermesFound = whichResult.exitCode == 0
             && !whichResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
@@ -415,7 +435,7 @@ public class HermesViewModel: ObservableObject {
 
         // Collect errors from any step
         var errors: [String] = []
-        if whichResult.timedOut || versionResult.timedOut || statusResult.timedOut {
+        if versionResult.timedOut || statusResult.timedOut {
             errors.append("Timed out")
         }
         if !hermesFound {
