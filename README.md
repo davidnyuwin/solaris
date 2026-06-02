@@ -67,6 +67,12 @@ The app uses a `DynamicHermesService` orchestrator that switches the underlying 
 2.  **Experimental REST Mode:** Connects to the local web server endpoint on `http://127.0.0.1:9119` using `LiveHermesService`. Fully mapped and validated against the Hermes Studio daemon code, but currently offline due to missing server-side dependencies (`fastapi` / `uvicorn`) in this local installation.
 3.  **Local Diagnostics Mode:** A completely offline, non-network diagnostic scanner (`LocalHermesDiagnosticsService`). It leverages safe shell process inspection (`pgrep`/`ps`) and filesystem scanning to discover if the background gateway daemon is running, inspects `lsof` to scan port listeners, and directly reads and tokenizes live logging from `~/.hermes/logs/agent.log` and `~/.hermes/logs/gateway.log` to populate the diagnostic log terminal in real time.
 
+> [!IMPORTANT]
+> **Release Safeguards & Privacy:**
+> *   **Safe Public Demos:** **Mock Mode** operates completely offline inside a Swift actor without executing process checks or scanning filesystem files, making it the safest option for public video demonstrations, screenshots, or slides.
+> *   **No Credentials Required:** The companion app operates completely locally. It **never requests, stores, or transmits** any third-party API keys, bearer tokens, or user passwords.
+> *   **Diagnostics Isolation:** All logs and process diagnostics are retrieved using safe local system mechanisms and are kept strictly local to your machine. No telemetry is collected or reported.
+
 ---
 
 ## 🔍 Diagnostic Testing & Smoke Tests

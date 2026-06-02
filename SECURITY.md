@@ -17,6 +17,16 @@ This project is open-source and git-tracked. If you are developing features or l
 *   It defaults to the verified standard loopback address of **`http://127.0.0.1:9119`** served dynamically by the local daemon process.
 *   Binding to public addresses is dangerous and exposes credentials on the network. Always run loops locally.
 
+## 📂 Diagnostics Mode & Log Safety
+This app includes a **Local Diagnostics Mode** to scan:
+*   Local background processes using safe fixed executable paths.
+*   System log files under `~/.hermes/logs/agent.log` and `~/.hermes/logs/gateway.log`.
+
+**Important Log Warnings:**
+*   These local log files contain prompt histories, execution states, and diagnostic outputs from your local daemon.
+*   **Never copy, stage, or commit real system log files, process dumps, PIDs, or active traces into public git repositories.**
+*   Always ensure your logs are sanitized of personal API keys or directory details before sharing diagnostic reports.
+
 ---
 
 ## ☄️ Safe Public Demonstrations
