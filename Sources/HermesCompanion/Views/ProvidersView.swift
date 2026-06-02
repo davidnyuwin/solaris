@@ -405,6 +405,25 @@ public struct ProvidersView: View {
                     .accessibilityLabel("Copy redacted diagnostics summary")
                     .accessibilityHint("Copies a privacy-safe diagnostics summary to the clipboard")
                     
+                    Button(action: {
+                        viewModel.exportRedactedDiagnosticsSummary()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 9))
+                            Text(viewModel.exportFeedbackText ?? "Export\u{2026}")
+                                .font(.system(size: 10.5, weight: .medium))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundColor(viewModel.exportFeedbackText != nil ? .emerald : .white)
+                        .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Export redacted diagnostics summary")
+                    .accessibilityHint("Saves a privacy-safe diagnostics summary to a text file")
+                    
                     Spacer()
                     
                     if viewModel.isDiagnosticsLogPaused {

@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Command+R keyboard shortcut for safe Local Diagnostics refresh
 - Native menu command for Refresh Diagnostics (disabled on non-diagnostics views and during active refresh)
 - Shortcut hint displayed on the in-app refresh button
+- Export Redacted Diagnostics menu command (Command+Shift+E)
+- User-selected text export for privacy-safe diagnostics summaries via NSSavePanel
+- In-app Export… button in Local Diagnostics logs panel
+
+### Security
+- Diagnostic exports always redact local paths, process IDs, and token-like strings
+- Diagnostic exports require explicit user save-panel confirmation
+- Export never writes automatically without NSSavePanel
 
 ---
 

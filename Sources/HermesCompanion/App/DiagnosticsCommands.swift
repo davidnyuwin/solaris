@@ -31,6 +31,17 @@ struct DiagnosticsCommands: Commands {
             .disabled(!isDiagnosticsActive || isRefreshing)
             .accessibilityLabel("Refresh local diagnostics")
             .accessibilityHint("Runs read-only diagnostics checks. Keyboard shortcut Command R.")
+
+            Divider()
+
+            Button("Export Redacted Diagnostics\u{2026}") {
+                guard isDiagnosticsActive, let vm = viewModel else { return }
+                vm.exportRedactedDiagnosticsSummary()
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+            .disabled(!isDiagnosticsActive)
+            .accessibilityLabel("Export redacted diagnostics summary to file")
+            .accessibilityHint("Saves a privacy-safe diagnostics summary to a text file. Keyboard shortcut Command Shift E.")
         }
     }
 }

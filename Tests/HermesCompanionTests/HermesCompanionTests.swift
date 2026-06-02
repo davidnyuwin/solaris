@@ -159,6 +159,34 @@ final class HermesCompanionTests: XCTestCase {
         // Cleanup
         viewModel.stopScheduler()
     }
+    
+    func testMakeRedactedDiagnosticsSummaryRedactionSafety() async {
+        let viewModel = HermesViewModel(service: MockHermesService())
+        
+        // Load mock data that includes paths, PIDs, and tokens
+        await viewModel.loadAllData()
+        
+        let summary = viewModel.makeRedactedDiagnosticsSummary()
+        
+        // Must include safe metadata
+        XCTAssertTrue(summary.contains("Solaris Diagnostics Summary"))
+        XCTAssertTrue(summary.contains("Solaris Version:"))
+        XCTAssertTrue(summary.contains("Last Checked:"))
+        
+        // Must NOT contain raw absolute paths
+        XCTAssertFalse(summary.contains("/Users/"))
+        
+        // Must NOT contain raw PID patterns from mock data
+        XCTAssertFalse(summary.contains("PID: 12345"))
+        XCTAssertFalse(summary.contains("PID: 12346"))
+        
+        // Must NOT contain raw token-like strings
+        XCTAssertFalse(summary.contains("secret-token"))
+        XCTAssertFalse(summary.contains("sk-"))
+        
+        // Must include safe provider metadata
+        XCTAssertTrue(summary.contains("Active Providers / Relays:"))
+    }
 }
 
 

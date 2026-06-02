@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import AppKit
+import UniformTypeIdentifiers
 
 @MainActor
 public class HermesViewModel: ObservableObject {
@@ -33,6 +34,9 @@ public class HermesViewModel: ObservableObject {
             pausedLogs = logs
         }
     }
+
+    // Batch 4 Diagnostics controls
+    @Published public var exportFeedbackText: String? = nil
 
     // Batch 3 Diagnostics controls
     @Published public var refreshInterval: DiagnosticsRefreshInterval = .manual {
@@ -173,9 +177,11 @@ public class HermesViewModel: ObservableObject {
         await sendCommand()
     }
     
-    public func generateDiagnosticsSummary() -> String {
+    /// Returns a fully redacted diagnostics summary safe for clipboard or file export.
+    /// Always applies DiagnosticsRedactor to redact local paths, PIDs, and token-like strings.
+    public func makeRedactedDiagnosticsSummary() -> String {
         var summary = "=== Solaris Diagnostics Summary ===\n"
-        summary += "Solaris Version: 0.7.0-dev\n"
+        summary += "Solaris Version: 0.8.0-dev\n"
         
         let savedMode = UserDefaults.standard.string(forKey: "HermesServiceMode") ?? "mock"
         let modeName: String
@@ -242,7 +248,7 @@ public class HermesViewModel: ObservableObject {
     }
     
     public func copyDiagnosticsSummaryToClipboard() {
-        let summary = generateDiagnosticsSummary()
+        let summary = makeRedactedDiagnosticsSummary()
         let pasteboard = NSPasteboard.general
         pasteboard.declareTypes([.string], owner: nil)
         let success = pasteboard.setString(summary, forType: .string)
@@ -253,11 +259,54 @@ public class HermesViewModel: ObservableObject {
             copyFeedbackText = "Copy failed"
         }
         
-        // Reset feedback after 2 seconds
+        resetCopyFeedbackAfterDelay()
+    }
+
+    /// Export a redacted diagnostics summary to a user-selected file via NSSavePanel.
+    /// Never writes automatically — requires explicit user save-panel confirmation.
+    public func exportRedactedDiagnosticsSummary() {
+        let summary = makeRedactedDiagnosticsSummary()
+
+        let savePanel = NSSavePanel()
+        savePanel.title = "Export Redacted Diagnostics"
+        savePanel.message = "Export a redacted diagnostics summary."
+        savePanel.prompt = "Export"
+        savePanel.allowedContentTypes = [.plainText]
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmm"
+        savePanel.nameFieldStringValue = "Solaris-Diagnostics-\(formatter.string(from: Date())).txt"
+
+        guard savePanel.runModal() == .OK, let url = savePanel.url else {
+            exportFeedbackText = "Export cancelled"
+            resetExportFeedbackAfterDelay()
+            return
+        }
+
+        do {
+            try summary.write(to: url, atomically: true, encoding: .utf8)
+            exportFeedbackText = "Exported"
+        } catch {
+            exportFeedbackText = "Export failed"
+        }
+
+        resetExportFeedbackAfterDelay()
+    }
+
+    private func resetCopyFeedbackAfterDelay() {
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             if self.copyFeedbackText == "Copied" || self.copyFeedbackText == "Copy failed" {
                 self.copyFeedbackText = nil
+            }
+        }
+    }
+
+    private func resetExportFeedbackAfterDelay() {
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if let text = self.exportFeedbackText, text == "Exported" || text == "Export cancelled" || text == "Export failed" {
+                self.exportFeedbackText = nil
             }
         }
     }
