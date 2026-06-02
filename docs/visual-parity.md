@@ -100,3 +100,35 @@ To achieve maximum visual upgrade with minimal compile-risk, we break the visual
 ### 💡 Visual Compromises & Technical Decisions
 *   **Sidebar Vibrant Material:** Left the sidebar's native material blending intact to let macOS manage window transparency naturally rather than hardcoding overdone, high-vibrancy colored graphics.
 *   **Mockup Parity:** While the orb and backdrop represent an immense, high-impact jump in quality matching the concept art style, the app window does not fully duplicate the three-column greeting details because structural functionality (which requires core app model changes) remains decoupled in this visual batch.
+
+---
+
+## 🔍 Runtime Visual Checkpoint After Batch 1
+
+### 📈 What Improved
+*   **Volumetric Orb Aesthetics:** The visual quality of the orb has increased significantly. Stacking multiple radial gradients with counter-rotations creates a fluid shifting solar core that feels organic and alive, a massive jump from the hard circles and standard SF bolt glyph.
+*   **Backdrop Depth:** The slate-graphite and solar-violet background linear gradient combined with the top-center radial solar flare creates a premium, moody glassmorphic canvas. Setting all detail views to transparent (`Color.clear`) allows the background glow to integrate perfectly behind all elements.
+
+### ⚠️ What Still Looks Weak
+*   **Grouped Diagnostics Layout (Batch 2):** The Local Diagnostics view still uses standard list rows instead of the highly aligned columns showing process names, active badges, and clean monospaced console lines tagged with status tags.
+*   **Native Form Settings (Batch 3):** SettingsView still relies on macOS standard grouped forms, which look generic compared to custom connection cards.
+*   **One-Column Dashboard Structure:** The dashboard view is centered in a single vertical stack, whereas the mockup showcases a balanced three-column pane with left navigation, central orb, and right contextual widgets (greetings, meetings, tasks).
+
+### ☀️ The Orb Status
+*   **Orb Parity:** The orb is now extremely close to the mockup's visual standard. The combination of multi-directional blending and a soft, glowing overlay represents a perfect, scalable Swift execution of the concept art.
+
+### 🔌 Glass Backdrop in Practice
+*   **Vibrancy Success:** The glass backdrop works wonderfully. It adjusts to safe translucency without becoming a flashy "nightclub-rainbow". Text readability remains high because the base colors are dark and graphite-hued, maintaining a high contrast ratio.
+
+### 📱 Layout and Responsiveness
+*   **Resizing Limits:** Default NavigationSplitView behaves cleanly. If the window is compressed extremely narrow, the horizontal QuickActionScrollView scrolls beautifully and prevents layout breakage.
+*   **Light/Dark Adaptive Mode:** Solaris is locked to dark mode. Because of this, it is safe from standard light mode contrast degradation, but future adaptations should employ semantic system colors rather than hardcoded white opacities.
+
+### 🖼️ README Concept Mockups Decision
+*   **Keep Mockups:** The README concept mockups should remain as our target visual design. They provide an outstanding, high-fidelity reference that keeps development focused on achieving premium design parity in upcoming batches.
+
+### 🚀 Recommended Batch 2 Scope
+We recommend that Batch 2 focuses strictly on **Local Diagnostics & Alignment**:
+1.  **Grouped Panes:** Rebuild `ProvidersView` to group details into "Parsed System Logs" and "Local Processes".
+2.  **Diagnostics Console Window:** Implement a styled monospaced console panel in the UI to list live system log lines tagged with unified color badges (`[INFO]`, `[WARN]`, `[ERROR]`).
+3.  **Process Badge States:** Render structured column rows showing active process lists (PIDs) with colored status badges.
