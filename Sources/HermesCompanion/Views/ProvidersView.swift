@@ -2,7 +2,7 @@ import SwiftUI
 
 public struct ProvidersView: View {
     @ObservedObject var viewModel: HermesViewModel
-    @State private var isPrivacyModeActive = false
+    @AppStorage("DiagnosticsPrivacyModeEnabled") private var isPrivacyModeActive = true
     
     public init(viewModel: HermesViewModel) {
         self.viewModel = viewModel
@@ -45,6 +45,48 @@ public struct ProvidersView: View {
                             }
                         }
                         .padding(.top, 2)
+                        
+                        HStack(spacing: 12) {
+                            HStack(spacing: 4) {
+                                Text("Auto-refresh:")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.white.opacity(0.5))
+                                
+                                Picker("", selection: $viewModel.refreshInterval) {
+                                    ForEach(DiagnosticsRefreshInterval.allCases) { interval in
+                                        Text(interval.displayName).tag(interval)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .frame(height: 18)
+                                .background(Color.white.opacity(0.04))
+                                .cornerRadius(4)
+                                .accessibilityLabel("Diagnostics auto-refresh interval")
+                            }
+                            
+                            let stateLabelText: String = {
+                                switch viewModel.refreshInterval {
+                                case .manual:
+                                    return "Auto-refresh: Manual"
+                                default:
+                                    return "Auto-refresh: Every \(viewModel.refreshInterval.displayName)"
+                                }
+                            }()
+                            
+                            Text(stateLabelText)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.35))
+                                .accessibilityLabel("Current diagnostics auto-refresh state")
+                            
+                            if viewModel.isDiagnosticsLogPaused && viewModel.refreshInterval != .manual {
+                                Text("Logs paused. Status cards may continue refreshing.")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.amber.opacity(0.8))
+                                    .accessibilityLabel("Logs paused warning")
+                            }
+                        }
+                        .padding(.top, 4)
                     }
                     
                     Spacer()
@@ -66,7 +108,7 @@ public struct ProvidersView: View {
                         .foregroundColor(viewModel.isRefreshingDiagnostics ? .white.opacity(0.4) : .white)
                         .cornerRadius(6)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
+                           RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
                         )
                     }
@@ -77,9 +119,14 @@ public struct ProvidersView: View {
                     .accessibilityLabel("Refresh local diagnostics")
                     
                     Toggle(isOn: $isPrivacyModeActive) {
-                        Text("Privacy Mode")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.white.opacity(0.7))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Privacy Mode")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white.opacity(0.7))
+                            Text("Default-on")
+                                .font(.system(size: 8))
+                                .foregroundColor(.white.opacity(0.4))
+                        }
                     }
                     .toggleStyle(.checkbox)
                     .padding(.top, 4)
@@ -117,6 +164,12 @@ public struct ProvidersView: View {
         .background(Color.clear)
         .task {
             await viewModel.loadAllData()
+        }
+        .onAppear {
+            viewModel.startScheduler()
+        }
+        .onDisappear {
+            viewModel.stopScheduler()
         }
     }
     

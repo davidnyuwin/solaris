@@ -34,9 +34,54 @@ public class HermesViewModel: ObservableObject {
         }
     }
 
+    // Batch 3 Diagnostics controls
+    @Published public var refreshInterval: DiagnosticsRefreshInterval = .manual {
+        didSet {
+            UserDefaults.standard.set(refreshInterval.rawValue, forKey: "DiagnosticsRefreshInterval")
+            restartScheduler()
+        }
+    }
+    
+    private var schedulerTask: Task<Void, Never>? = nil
+    
+    public func startScheduler() {
+        stopScheduler()
+        
+        guard let interval = refreshInterval.timeInterval else {
+            return
+        }
+        
+        schedulerTask = Task {
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                } catch {
+                    break
+                }
+                
+                guard !Task.isCancelled else { break }
+                
+                if !isRefreshingDiagnostics {
+                    await refreshDiagnostics()
+                }
+            }
+        }
+    }
+    
+    public func stopScheduler() {
+        schedulerTask?.cancel()
+        schedulerTask = nil
+    }
+    
+    public func restartScheduler() {
+        startScheduler()
+    }
     
     public init(service: any HermesService) {
         self.service = service
+        
+        let savedRaw = UserDefaults.standard.string(forKey: "DiagnosticsRefreshInterval") ?? "manual"
+        self.refreshInterval = DiagnosticsRefreshInterval(rawValue: savedRaw) ?? .manual
     }
     
     public func loadAllData() async {

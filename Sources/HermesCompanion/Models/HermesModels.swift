@@ -168,3 +168,31 @@ public struct HermesCLIStatusSnapshot: Sendable, Codable {
         self.errors = errors
     }
 }
+
+public enum DiagnosticsRefreshInterval: String, CaseIterable, Identifiable, Codable {
+    case manual = "manual"
+    case thirtySeconds = "thirtySeconds"
+    case oneMinute = "oneMinute"
+    case fiveMinutes = "fiveMinutes"
+    
+    public var id: String { self.rawValue }
+    
+    public var displayName: String {
+        switch self {
+        case .manual: return "Manual"
+        case .thirtySeconds: return "30 sec"
+        case .oneMinute: return "1 min"
+        case .fiveMinutes: return "5 min"
+        }
+    }
+    
+    public var timeInterval: TimeInterval? {
+        switch self {
+        case .manual: return nil
+        case .thirtySeconds: return 30.0
+        case .oneMinute: return 60.0
+        case .fiveMinutes: return 300.0
+        }
+    }
+}
+

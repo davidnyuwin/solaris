@@ -120,6 +120,45 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertTrue(redacted.contains("hex_hash [REDACTED_TOKEN]"))
         XCTAssertTrue(redacted.contains("bearer: [REDACTED]"))
     }
+    
+    func testRefreshIntervalDefaults() {
+        // Default interval is manual
+        let defaultInterval = DiagnosticsRefreshInterval.manual
+        XCTAssertEqual(defaultInterval.rawValue, "manual")
+        XCTAssertNil(defaultInterval.timeInterval)
+        XCTAssertEqual(defaultInterval.displayName, "Manual")
+        
+        // All cases are present
+        let allCases = DiagnosticsRefreshInterval.allCases
+        XCTAssertTrue(allCases.contains(.manual))
+        XCTAssertTrue(allCases.contains(.thirtySeconds))
+        XCTAssertTrue(allCases.contains(.oneMinute))
+        XCTAssertTrue(allCases.contains(.fiveMinutes))
+        
+        // Display labels
+        XCTAssertEqual(DiagnosticsRefreshInterval.thirtySeconds.displayName, "30 sec")
+        XCTAssertEqual(DiagnosticsRefreshInterval.oneMinute.displayName, "1 min")
+        XCTAssertEqual(DiagnosticsRefreshInterval.fiveMinutes.displayName, "5 min")
+        
+        // Time intervals
+        XCTAssertEqual(DiagnosticsRefreshInterval.thirtySeconds.timeInterval, 30.0)
+        XCTAssertEqual(DiagnosticsRefreshInterval.oneMinute.timeInterval, 60.0)
+        XCTAssertEqual(DiagnosticsRefreshInterval.fiveMinutes.timeInterval, 300.0)
+    }
+    
+    func testSchedulerDoesNotStartForManualInterval() async {
+        let viewModel = HermesViewModel(service: MockHermesService())
+        XCTAssertEqual(viewModel.refreshInterval, .manual)
+        
+        // Starting scheduler with Manual interval should be a no-op
+        viewModel.startScheduler()
+        
+        // No refresh should have been triggered — isRefreshingDiagnostics stays false
+        XCTAssertFalse(viewModel.isRefreshingDiagnostics)
+        
+        // Cleanup
+        viewModel.stopScheduler()
+    }
 }
 
 

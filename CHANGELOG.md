@@ -13,9 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refreshing/error states for diagnostics updates
 - Pause/resume control for diagnostics log display
 - Copy redacted diagnostics summary action
+- Conservative auto-refresh interval selector for Local Diagnostics (Manual / 30 sec / 1 min / 5 min)
+- Cancellation-aware diagnostics refresh scheduler (stops on view disappear, skips overlapping sweeps)
+- Persistent default-on Privacy Mode for diagnostics views
 
 ### Security
 - Copied diagnostics summaries redact local paths, process IDs, and token-like strings
+- Auto-refresh uses only existing read-only diagnostics paths
+- Auto-refresh prevents overlapping refresh sweeps
+- Privacy Mode remains default-on via `@AppStorage("DiagnosticsPrivacyModeEnabled")`
 
 ---
 
