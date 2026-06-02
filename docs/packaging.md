@@ -32,7 +32,7 @@ chmod +x scripts/build-app.sh
 4. **App Icon:** Downsamples the high-res master icon to construct `Contents/Resources/Solaris.icns`.
 5. **Metadata:** Generates and validates the target `Contents/Info.plist`.
 6. **Codesigning (Optional):** Signs the bundle with an ad-hoc identity (`-`) if `--sign` is passed.
-7. **Packaging (Optional):** Generates `dist/Solaris-v0.5.0-dev.zip` using `ditto` (or `zip` fallback) if `--zip` is passed.
+7. **Packaging (Optional):** Generates `dist/Solaris-v0.7.0-dev.zip` using `ditto` (or `zip` fallback) if `--zip` is passed.
 
 ---
 
@@ -48,7 +48,7 @@ dist/
   │           │     └── Solaris     # Release executable binary
   │           ├── Resources/        # Solaris.icns compiled icon bundle
   │           └── Info.plist        # Application configuration metadata
-  └── Solaris-v0.5.0-dev.zip        # Consolidated local ZIP distribution artifact
+  └── Solaris-v0.7.0-dev.zip        # Consolidated local ZIP distribution artifact
 ```
 
 ---
@@ -88,11 +88,11 @@ Ad-hoc signing validates code integrity and prevents runtime modifications from 
 ### 2. Local ZIP Artifact Workflow (`--zip`)
 To package the app for local transfer, a ZIP packaging workflow creates an archive at:
 ```text
-dist/Solaris-v0.5.0-dev.zip
+dist/Solaris-v0.7.0-dev.zip
 ```
 The script uses macOS native `ditto` to preserve standard package metadata, file permissions, resource forks, and Symlinks:
 ```bash
-ditto -c -k --keepParent dist/Solaris.app dist/Solaris-v0.5.0-dev.zip
+ditto -c -k --keepParent dist/Solaris.app dist/Solaris-v0.7.0-dev.zip
 ```
 If `ditto` is unavailable, the pipeline falls back gracefully to standard `zip -r`.
 
@@ -159,7 +159,7 @@ Solaris includes an automated continuous integration pipeline defined at `.githu
 2. **Package & Codesign (`package` job):**
    * **Packaging Automation:** Runs the unified app builder script with full parameters (`./scripts/build-app.sh --sign --zip`).
    * **Package Validation:** Verifies file existence (`Solaris.app`, executable bin, `.icns` files), runs the `plutil` plist linter, and runs strict `codesign --verify` on the generated package.
-   * **CI Release Artifacts:** Packages the release ZIP bundle and uploads it to GitHub's Actions storage as a downloadable development run attachment (`Solaris-v0.5.0-dev`).
+   * **CI Release Artifacts:** Packages the release ZIP bundle and uploads it to GitHub's Actions storage as a downloadable development run attachment (`Solaris-v0.7.0-dev`).
 
 > [!IMPORTANT]
 > **CI Artifact Purpose & Limitations:**
