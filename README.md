@@ -4,9 +4,13 @@
   <img src="docs/screenshots/app-icon.png" width="160" height="160" alt="Solaris App Icon">
 </p>
 
-Solaris is a native macOS companion/control surface for Hermes Agent.
+Solaris is a native macOS companion for **Hermes Agent** — designed to connect
+to a remote Hermes host (over SSH) as the primary use case.
 
-It includes a polished mock mode, local diagnostics for Hermes process/log visibility, and an experimental read-only REST adapter for future Hermes dashboard API support. Inspired by native macOS assistant designs, it provides soft glassmorphism, responsive diagnostic visualizations, and low-latency interaction cards to control your local workflows.
+It includes a polished mock mode and local diagnostics for local-only Hermes
+installations, but the core product direction is **Remote Hermes Host Mode**:
+SSH-based read-only status checks, remote chat sessions, and safe control
+surfaces — all without assuming Hermes runs on the MacBook.
 
 [![CI](https://github.com/davidnyuwin/solaris/actions/workflows/ci.yml/badge.svg)](https://github.com/davidnyuwin/solaris/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
@@ -48,13 +52,23 @@ These concept images represent the original visual direction and are retained fo
 The app is structured strictly around **MVVM (Model-View-ViewModel)** and uses Swift concurrency (`async/await`) and service protocols.
 
 ```text
+Solaris.app on MacBook
+  │
+  ├── SSH connection layer ────── Remote Hermes host (source of truth)
+  │
+  ├── Local Diagnostics  ──────── MacBook local state only (dev/support)
+  │
+  └── Mock Mode  ──────────────── Demos and UI development
+```
+
+```text
 Sources/HermesCompanion/
   ├── App/             # @main App Entry Point
   ├── Views/           # NavigationSplitView and full pages (Dashboard, Settings, etc.)
   ├── Components/      # Animated Orb, Cards (Provider, Log, Result, CommandBar)
   ├── Models/          # Plain struct schemas (HermesStatus, ProviderHealth, LogLine)
   ├── ViewModels/      # Main UI state controller handling commands & action signals
-  └── Services/        # Protocol-defined network adapters (Mock & Production API pathways)
+  └── Services/        # Protocol-defined network adapters (Mock, SSH, Local Diagnostics, REST)
 ```
 
 ---
@@ -84,13 +98,14 @@ swift test
 
 ---
 
-## 🔌 Connection Map: Three Service Integration Modes
+## 🔌 Connection Map: Service Integration Modes
 
 The app uses a `DynamicHermesService` orchestrator that switches the underlying integration engine dynamically depending on your choice in the in-app **Settings**:
 
 1.  **Mock Mode (Default):** Safely isolated inside a local Swift actor (`MockHermesService`) for offline design iterations and public demos. Returns beautiful, realistic simulated metrics, active timeline logs, and quick actions.
-2.  **Experimental REST Mode:** Connects to the local web server endpoint on `http://127.0.0.1:9119` using `LiveHermesService`. Fully mapped and validated against the Hermes Studio daemon code, but currently offline due to missing server-side dependencies (`fastapi` / `uvicorn`) in this local installation.
+2.  **Remote Host Mode (Planned):** Connects to a remote Hermes host over SSH using `SSHCommandExecutor`. Runs allowlisted read-only commands (`hermes status`, `hermes gateway status`, `hermes --version`). No Hermes installation required on the MacBook. This is the primary target mode.
 3.  **Local Diagnostics Mode:** A completely offline, non-network diagnostic scanner (`LocalHermesDiagnosticsService`). It leverages safe shell process inspection (`pgrep`/`ps`) and filesystem scanning to discover if the background gateway daemon is running, inspects `lsof` to scan port listeners, and directly reads and tokenizes live logging from `~/.hermes/logs/agent.log` and `~/.hermes/logs/gateway.log`. In v0.4.0, it is enriched with safe, read-only Hermes CLI status checks (active provider, active model, gateway service status, and recent gateway events) using non-shell Swift `Process` executions.
+4.  **Experimental REST Mode:** Connects to the local web server endpoint on `http://127.0.0.1:9119` using `LiveHermesService`. Currently offline due to missing server-side dependencies (`fastapi` / `uvicorn`) in this installation.
 
 > [!IMPORTANT]
 > **Release Safeguards & Privacy:**
@@ -139,12 +154,18 @@ open dist/Solaris.app
 ---
 
 ## 🗺️ Roadmap
-- [ ] Polish visual identity and icon
-- [ ] Add signed app bundle workflow
-- [ ] Improve local diagnostics parsing
-- [ ] Add optional REST dashboard support when available
-- [ ] Investigate WebSocket/event stream support
-- [ ] Add Keychain-backed credential storage if auth is ever required
+
+### v0.9 — Remote Hermes Host Mode
+- [ ] SSH remote command runner (read-only allowlist)
+- [ ] Remote Host settings (host, user, port)
+- [ ] Remote `hermes status` and diagnostics display
+- [ ] SSH one-shot `hermes chat -q` probe
+- [ ] SSH PTY interactive chat session
+
+### Beyond v0.9
+- [ ] SSH tunnel to remote dashboard
+- [ ] Multiple remote host profiles
+- [ ] Keychain-backed credential storage (for future auth needs)
 
 ## 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.

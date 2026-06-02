@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Planning
+- Reframed Solaris architecture around Remote Hermes Host Mode over SSH
+- Documented remote source-of-truth model for Hermes host access
+- Created transport matrix for SSH-based remote Hermes communication
+
 ---
 
 ## v0.8.0 - Native macOS Controls
