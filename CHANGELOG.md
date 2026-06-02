@@ -5,19 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0] - 2026-06-02
+## v0.6.0 - Profile discovery threat model
 
 ### Added
-- Comprehensive profile discovery threat model (`docs/profile-discovery-threat-model.md`)
-- Safety classification for local config fields (Safe, Sensitive, Conditional)
-- Evaluation of direct YAML loaders vs. CLI status wrapping
-- Mandatory sandbox-friendly diagnostic guardrails and whitelisting rules
+- Threat model for future Local Profiles Discovery
+- Safety classification for potential Hermes config/profile fields
+- Integration option analysis for profile discovery approaches
+- Guardrails for future config/profile-related work
 
 ### Security
-- Threat model only. No config/profile reading has been implemented
-- Keeps raw `config.yaml` and `.env` files completely blocked and out of the UI
-- `hermes config show` remains strictly blocked from UI
-- Continues to enforce strict read-only execution constraints with no mutating operations
+- Confirms Solaris must not read `~/.hermes/config.yaml` directly
+- Confirms Solaris must not surface `hermes config show`
+- Blocks raw display of API keys, tokens, webhooks, authorization headers, channel IDs, account IDs, private URLs, and absolute local paths
+- Requires explicit allowlists and redaction before any future profile metadata implementation
+
+### Decision
+- Local Profiles Discovery is intentionally deferred.
+- The only currently safe local integration path remains the existing read-only CLI status wrapper.
+- No profile/config reading is implemented in this release.
+
+### Notes
+- v0.6.0 is a documentation/security milestone.
+- Future profile discovery requires a safe Hermes-provided summary command or an explicitly redacted, opt-in metadata pathway.
 
 ---
 

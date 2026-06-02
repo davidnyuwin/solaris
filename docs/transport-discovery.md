@@ -115,7 +115,7 @@ Transport discovery phase complete. The primary safe integration path is read-on
 
 ## Recommended Next Step
 1. **Retain Local Diagnostics as the primary core:** Keep utilizing filesystem scanning and `pgrep`/`lsof` for baseline status.
-2. **Implement a safe CLI Wrapper service:** Let the companion UI invoke `hermes status` and `hermes config show` directly using standard Swift `Process` executions. Parse the plain text stdout to retrieve the active model name and gateway running states. This adds real-time settings validation without requiring uvicorn network servers or missing Python libraries.
+2. **Harden Safe Diagnostics Controls (v0.7):** Based on the v0.6 Profile Discovery Threat Model, direct configuration parsing (`config.yaml` / `.env` reads) and `hermes config show` remain strictly blocked. The next safe product milestone focuses on local diagnostics controls (e.g. manual refresh, pause/resume logs, last checked indicators, and accessibility enhancements) to keep the sandbox completely secure.
 
 ---
 
