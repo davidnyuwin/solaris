@@ -3,6 +3,14 @@ import Combine
 import AppKit
 import UniformTypeIdentifiers
 
+/// Marks whether a diagnostics refresh was triggered interactively or by the
+/// auto-refresh scheduler.  Used to decide whether to post an accessibility
+/// announcement (manual → announce; scheduled → stay quiet on success).
+public enum DiagnosticsRefreshSource: Sendable, Equatable {
+    case manual
+    case scheduled
+}
+
 @MainActor
 public class HermesViewModel: ObservableObject {
     private let service: any HermesService
@@ -38,6 +46,11 @@ public class HermesViewModel: ObservableObject {
     // Batch 4 Diagnostics controls
     @Published public var exportFeedbackText: String? = nil
 
+    // Batch 5 Accessibility announcement state (anti-spam)
+    private var lastAccessibilityAnnouncement: String?
+    private var lastAccessibilityAnnouncementAt: Date?
+    private let antiSpamCooldown: TimeInterval = 60
+
     // Batch 3 Diagnostics controls
     @Published public var refreshInterval: DiagnosticsRefreshInterval = .manual {
         didSet {
@@ -66,7 +79,7 @@ public class HermesViewModel: ObservableObject {
                 guard !Task.isCancelled else { break }
                 
                 if !isRefreshingDiagnostics {
-                    await refreshDiagnostics()
+                    await refreshDiagnostics(source: .scheduled)
                 }
             }
         }
@@ -108,10 +121,11 @@ public class HermesViewModel: ObservableObject {
         }
     }
     
-    public func refreshDiagnostics() async {
+    public func refreshDiagnostics(source: DiagnosticsRefreshSource = .manual) async {
         isRefreshingDiagnostics = true
         diagnosticsRefreshError = nil
         
+        let succeeded: Bool
         do {
             async let statusFetch = service.getStatus()
             async let providersFetch = service.getProviderHealth()
@@ -122,11 +136,48 @@ public class HermesViewModel: ObservableObject {
             self.logs = try await logsFetch
             
             self.lastDiagnosticsRefreshAt = Date()
+            succeeded = true
         } catch {
             diagnosticsRefreshError = "Diagnostics refresh failed: \(error.localizedDescription)"
+            succeeded = false
         }
         
         isRefreshingDiagnostics = false
+        
+        announceRefreshOutcome(source: source, succeeded: succeeded)
+    }
+    
+    private func announceRefreshOutcome(source: DiagnosticsRefreshSource, succeeded: Bool) {
+        let message: String
+        switch (source, succeeded) {
+        case (.manual, true):
+            message = "Diagnostics refreshed."
+        case (.manual, false):
+            message = "Diagnostics refresh failed."
+        case (.scheduled, true):
+            // Scheduled success is intentionally silent.
+            return
+        case (.scheduled, false):
+            message = "Scheduled diagnostics refresh failed."
+        }
+        
+        guard shouldAnnounce(message) else { return }
+        AccessibilityAnnouncer.announce(message)
+        lastAccessibilityAnnouncement = message
+        lastAccessibilityAnnouncementAt = Date()
+    }
+    
+    /// Returns `false` if the same message was announced within the anti-spam
+    /// cooldown window.  Prevents repeated identical failure noise.
+    private func shouldAnnounce(_ message: String) -> Bool {
+        guard let lastMsg = lastAccessibilityAnnouncement,
+              let lastAt = lastAccessibilityAnnouncementAt else {
+            return true
+        }
+        // Allow repeats of different messages immediately.
+        guard lastMsg == message else { return true }
+        // Throttle identical repeats.
+        return Date().timeIntervalSince(lastAt) >= antiSpamCooldown
     }
     
     public func sendCommand() async {
@@ -255,6 +306,7 @@ public class HermesViewModel: ObservableObject {
         
         if success {
             copyFeedbackText = "Copied"
+            AccessibilityAnnouncer.announce("Diagnostics summary copied.")
         } else {
             copyFeedbackText = "Copy failed"
         }
@@ -286,6 +338,7 @@ public class HermesViewModel: ObservableObject {
         do {
             try summary.write(to: url, atomically: true, encoding: .utf8)
             exportFeedbackText = "Exported"
+            AccessibilityAnnouncer.announce("Diagnostics summary exported.")
         } catch {
             exportFeedbackText = "Export failed"
         }

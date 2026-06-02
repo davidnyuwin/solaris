@@ -16,8 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-app Export… button in Local Diagnostics logs panel
 - Native Pause/Resume Diagnostics Logs menu command (Command+Shift+P)
 - Keyboard shortcut for pausing and resuming visible diagnostics logs
-
-### Changed
+- VoiceOver-friendly diagnostics refresh announcements using native NSAccessibility API
 - Improved visual status handling for read-only Hermes CLI timeout, unavailable, and parse warning states
 - Added dedicated user-facing explanations for each CLI status state (timeout, Python missing, non-zero exit, parse warnings)
 - Added `CLIStatusPresentation` model for structured CLI status-to-presentation mapping
@@ -25,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Accessibility
 - Added clearer accessibility values for read-only Hermes CLI status states
 - "Read-only CLI Status" row now exposes per-state explanation as accessibility value
+- VoiceOver-friendly diagnostics refresh announcements using native NSAccessibility API
+- Manual diagnostics refreshes announce success or failure
+- Scheduled refresh failures announce without repeating noisy success messages
+- Copy and export actions announce success
 
 ### Security
 - Diagnostic exports always redact local paths, process IDs, and token-like strings
