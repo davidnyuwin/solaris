@@ -28,21 +28,7 @@ public struct OutputSanitiser: Sendable {
         // String(decoding:as:) replaces invalid UTF-8 bytes with Unicode replacement character (\u{FFFD})
         var text = String(decoding: rawData, as: UTF8.self)
         
-        // 3. Control Character Filtering (Exclude C0/C1 control characters except safe whitespace)
-        // Allowed whitespace: Tab (9), LF (10), CR (13)
-        // C0 range to filter: 0-8, 11-12, 14-31, 127
-        // C1 range to filter: 128-159 (0x80-0x9F)
-        text = String(text.unicodeScalars.filter { scalar in
-            let val = scalar.value
-            if val >= 0 && val <= 8 { return false }
-            if val >= 11 && val <= 12 { return false }
-            if val >= 14 && val <= 31 { return false }
-            if val == 127 { return false }
-            if val >= 128 && val <= 159 { return false }
-            return true
-        })
-        
-        // 4. ANSI/OSC Escape Sequence Stripping
+        // 3. ANSI/OSC Escape Sequence Stripping
         let esc = "\u{001B}"
         let bel = "\u{0007}"
         
@@ -57,6 +43,21 @@ public struct OutputSanitiser: Sendable {
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
             text = oscRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
         }
+        
+        // 4. Control Character Filtering (Exclude C0/C1 control characters except safe whitespace)
+        // Allowed whitespace: Tab (9), LF (10), CR (13)
+        // C0 range to filter: 0-8, 11-12, 14-31, 127
+        // C1 range to filter: 128-159 (0x80-0x9F)
+        text = String(text.unicodeScalars.filter { scalar in
+            let val = scalar.value
+            if val >= 0 && val <= 8 { return false }
+            if val >= 11 && val <= 12 { return false }
+            if val >= 14 && val <= 31 { return false }
+            if val == 127 { return false }
+            if val >= 128 && val <= 159 { return false }
+            return true
+        })
+
         
         // 5. Secret-Shaped Redaction (Preserves harmless commit hashes and diagnostic hex fingerprints)
         // Redact OpenAI API keys (sk- followed by characters)
