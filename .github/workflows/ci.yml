@@ -21,6 +21,9 @@ jobs:
       - name: Compile Solaris (Debug)
         run: swift build
 
+      - name: Run Unit Tests
+        run: swift test
+
       - name: Run API Smoke Test
         run: ./scripts/smoke-test.sh
 
@@ -47,13 +50,13 @@ jobs:
           test -d dist/Solaris.app
           test -x dist/Solaris.app/Contents/MacOS/Solaris
           test -f dist/Solaris.app/Contents/Resources/Solaris.icns
-          test -f dist/Solaris-v0.3.0-dev.zip
+          test -f dist/Solaris-v0.5.0-dev.zip
           plutil -lint dist/Solaris.app/Contents/Info.plist
           codesign --verify --deep --strict --verbose=2 dist/Solaris.app
 
       - name: Upload Release Archive
         uses: actions/upload-artifact@v4
         with:
-          name: Solaris-v0.3.0-dev
-          path: dist/Solaris-v0.3.0-dev.zip
+          name: Solaris-v0.5.0-dev
+          path: dist/Solaris-v0.5.0-dev.zip
           if-no-files-found: error

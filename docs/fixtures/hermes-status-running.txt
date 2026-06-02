@@ -1,0 +1,16 @@
+☄️ Hermes Agent Component Status
+
+Inference Configuration:
+  Active Provider: ollama (local)
+  Active Model: nous-hermes-2
+
+Background Daemons:
+  Messaging Gateway: Running (PID: 12345)
+  Vite Dashboard: Running (PID: 12346)
+
+Local Environment:
+  Hermes Home: /Users/username/.hermes
+  Active Profile: default
+  Config Version: 2
+
+Diagnostic check passed!

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-02
+
+### Added
+- Parser fixtures (`docs/fixtures/`) for robust read-only parsing verification
+- Unit tests (`HermesCompanionTests`) for plain-text parser validation
+- User-facing "Hermes CLI Status" availability summary row in local diagnostics System Checks
+- Structured failure state tracking (`Unavailable`, `Timed out`, `Parse warning`, `Python missing`)
+- Integration of unit testing step into GitHub Actions CI pipelines
+
+### Changed
+- Centralized application build and packaging scripts to v0.5.0-dev metadata
+- Prepopulated list of diagnostic runs with CLI configurations when active
+
+### Notes
+- Local Profiles Discovery is deferred.
+- Mutating commands, live control, config reading, and `hermes config show` remain strictly blocked.
+- WebSocket is unimplemented due to local dashboard API unavailability.
+
+---
+
 ## [0.4.0] - 2026-06-02
 
 ### Added

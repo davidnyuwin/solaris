@@ -39,16 +39,34 @@ public final class LocalHermesDiagnosticsService: HermesService, @unchecked Send
         // Enrich with CLI status if available
         var activeProvider: String? = nil
         var activeModel: String? = nil
+        var cliStatus = "Unavailable"
+        let cliLastChecked = Date()
         
         do {
             let cliResult = try await cliExecutor.execute(command: .status)
-            if cliResult.exitCode == 0 {
+            if cliResult.timedOut {
+                cliStatus = "Timed out"
+            } else if cliResult.exitCode != 0 {
+                cliStatus = "Unavailable (Exit code: \(cliResult.exitCode))"
+            } else if cliResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                cliStatus = "Parse warning (Empty stdout)"
+            } else {
                 let parsed = cliParsers.parseStatus(cliResult.stdout)
                 activeProvider = parsed.activeProvider
                 activeModel = parsed.activeModel
+                
+                if activeProvider != nil || activeModel != nil {
+                    cliStatus = "Available"
+                } else {
+                    cliStatus = "Parse warning (No fields parsed)"
+                }
             }
+        } catch HermesCLIError.executableNotFound {
+            cliStatus = "Unavailable (Python missing)"
+        } catch HermesCLIError.executionFailed(let reason) {
+            cliStatus = "Unavailable (\(reason))"
         } catch {
-            // Degrade gracefully; activeProvider/activeModel remain nil
+            cliStatus = "Unavailable (\(error.localizedDescription))"
         }
         
         return HermesStatus(
@@ -64,7 +82,9 @@ public final class LocalHermesDiagnosticsService: HermesService, @unchecked Send
             gatewayLogPath: gatewayLogURL.path,
             gatewayPID: isGatewayRunning ? getGatewayPID() : nil,
             activeProvider: activeProvider,
-            activeModel: activeModel
+            activeModel: activeModel,
+            cliStatus: cliStatus,
+            cliLastChecked: cliLastChecked
         )
     }
     

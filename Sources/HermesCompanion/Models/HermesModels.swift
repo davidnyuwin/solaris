@@ -26,6 +26,10 @@ public struct HermesStatus: Codable {
     public let activeProvider: String?
     public let activeModel: String?
     
+    // Phase 5: CLI availability summary
+    public let cliStatus: String?
+    public let cliLastChecked: Date?
+    
     public init(
         state: HermesState,
         uptimeSeconds: Int,
@@ -39,7 +43,9 @@ public struct HermesStatus: Codable {
         gatewayLogPath: String? = nil,
         gatewayPID: String? = nil,
         activeProvider: String? = nil,
-        activeModel: String? = nil
+        activeModel: String? = nil,
+        cliStatus: String? = nil,
+        cliLastChecked: Date? = nil
     ) {
         self.state = state
         self.uptimeSeconds = uptimeSeconds
@@ -54,6 +60,8 @@ public struct HermesStatus: Codable {
         self.gatewayPID = gatewayPID
         self.activeProvider = activeProvider
         self.activeModel = activeModel
+        self.cliStatus = cliStatus
+        self.cliLastChecked = cliLastChecked
     }
 }
 

@@ -10,7 +10,7 @@ BLUE='\033[0;34m'
 
 # Versioning and Metadata
 APP_NAME="Solaris"
-APP_VERSION="0.3.0-dev"
+APP_VERSION="0.5.0-dev"
 BUNDLE_ID="com.davidnguyen.solaris"
 
 # Parse arguments

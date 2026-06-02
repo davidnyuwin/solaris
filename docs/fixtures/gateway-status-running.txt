@@ -1,0 +1,10 @@
+Gateway Daemon Status:
+  Service Status: Running (Active)
+  Process ID: 12345
+  Platform Listeners: telegram, discord
+  Active Log File: /Users/username/.hermes/logs/gateway.log
+  Log Size: 4.5 KB
+  Recent Events (Last 3):
+    [2026-06-02 12:45:00] Gateway startup completed.
+    [2026-06-02 12:44:50] Gateway process spawned (PID: 12345).
+    [2026-06-02 12:44:45] Gateway initialized.

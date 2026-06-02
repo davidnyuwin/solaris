@@ -1,0 +1,7 @@
+☄️ Hermes Agent Component Status
+
+Inference Configuration:
+
+Background Daemons:
+
+Local Environment:

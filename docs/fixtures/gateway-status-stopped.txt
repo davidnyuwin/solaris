@@ -1,0 +1,10 @@
+Gateway Daemon Status:
+  Service Status: Stopped (Inactive)
+  Process ID: None
+  Platform Listeners: None
+  Active Log File: /Users/username/.hermes/logs/gateway.log
+  Log Size: 2.1 KB
+  Recent Events (Last 3):
+    [2026-06-02 12:45:12] Gateway process terminated cleanly.
+    [2026-06-02 12:45:00] Gateway startup requested.
+    [2026-06-02 12:44:45] Gateway initialized.

@@ -196,6 +196,29 @@ public struct ProvidersView: View {
                     isPrivacyActive: isPrivacyModeActive
                 )
                 
+                Divider()
+                    .background(Color.white.opacity(0.06))
+                
+                let cliStatusText = status?.cliStatus ?? "Unavailable"
+                let cliLastCheckedText: String = {
+                    if let date = status?.cliLastChecked {
+                        let formatter = DateFormatter()
+                        formatter.dateFormat = "HH:mm:ss"
+                        return "Checked: \(formatter.string(from: date))"
+                    } else {
+                        return "Never checked"
+                    }
+                }()
+                
+                ProcessStatusRow(
+                    name: "Hermes CLI Status",
+                    status: cliStatusText.starts(with: "Available") ? .stable : (cliStatusText.contains("Warning") ? .idle : .unavailable),
+                    detailText: "Source: Read-only CLI • \(cliStatusText) • \(cliLastCheckedText)",
+                    pidText: nil,
+                    iconName: "terminal",
+                    isPrivacyActive: isPrivacyModeActive
+                )
+                
                 if !viewModel.providers.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("API Providers & Relays")

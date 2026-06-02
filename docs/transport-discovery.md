@@ -2,7 +2,7 @@
 
 ## Status
 
-Transport discovery phase complete. The first implementation path (v0.4) is read-only CLI status enrichment, not live command/control.
+Transport discovery phase complete. The primary safe integration path is read-only CLI status enrichment. In v0.5, this path has been extensively hardened. Live command/control, WebSocket connections, and REST server triggers remain deferred/future work.
 
 ---
 

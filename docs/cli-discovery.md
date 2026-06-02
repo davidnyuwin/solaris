@@ -2,7 +2,15 @@
 
 ## Status
 
-Read-only CLI status wrapper has been fully implemented in Local Diagnostics Mode.
+Read-only CLI status wrapper has been fully implemented in Local Diagnostics Mode and hardened in v0.5.
+
+## v0.5 Read-Only CLI Hardening
+
+Solaris now enriches the read-only status integration with:
+- Sanitized test fixtures for all parsing variants (running, stopped, missing fields) located at `docs/fixtures/`.
+- Standing unit tests under `HermesCompanionTests` verifying parsing correctness and path redacting behaviors.
+- Robust user-facing CLI availability summaries indicating "Available", "Timed out", "Parse warning", and error codes.
+- All mutating commands, profile configurations, and `hermes config show` remain strictly blocked.
 
 ## v0.4 Read-Only CLI Wrapper Implementation
 
