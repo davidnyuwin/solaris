@@ -174,4 +174,24 @@ Following the implementation of the Batch 2 Diagnostics UI Polish, a fresh actua
 
 This updated screenshot captures the high-fidelity glassmorphic container layout, the monospace log console with severity badges, and the Privacy Mode redactions in action.
 
+---
+
+## Batch 3: Settings UI Polish (June 2, 2026)
+
+### ✅ What Changed
+*   **Rebuilt Settings Layout:** Replaced the default macOS `.formStyle(.grouped)` layout with a gorgeous, premium glassmorphic cards layout in `SettingsView.swift`.
+*   **Created ModeOptionCard Component:** Created structured selection cards for Mock Mode, Local Diagnostics Mode, and Experimental REST Mode, displaying description texts, dynamic status tags ("Recommended", "Useful Today", "Experimental"), clean selected check orbits, and realistic hover borders.
+*   **Upgraded API Endpoint Panel:** Developed a highly custom API endpoint input field using dark glassmorphic box layouts rather than standard native bordered textfields, accompanied by a custom, highly styled "Test Connection" button, active loading spinner, and inline colored success/failure labels.
+*   **Added System Preferences Section:** Organized the default "Launch at Login" and "Keep Window Floating on Top" toggles into a modern settings preference block using premium switch selectors.
+*   **Added Privacy & Safety Descriptions:** Outlined safe folder inspections, data isolation boundaries, Privacy Mode summaries, and Keychain Services protocols.
+*   **Added Developer Phase Console:** Included structured development milestones and operational statuses (Mock, Local, REST, WebSocket) with matching color-coded badges to manage product expectations.
+*   **Adaptive Grid Responsiveness:** Designed SettingsView using horizontal/vertical layout geometry adjustments to lay out in balanced two-column configurations on wide screens and collapse cleanly into a single vertical stream on small displays.
+
+### ⚠️ What Remains
+*   **Three-Column Dashboard Layout:** Evolve the Dashboard view to support greetings, task queues, and sidebar columns as shown in the concept mockups.
+
+### 💡 Visual Compromises & Technical Decisions
+*   **Manual Screen Capturing:** To complete visual check-pointing for Batch 3, actual runtime screenshots of this updated Settings screen should be manually recaptured next.
+
+
 
