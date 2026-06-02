@@ -193,5 +193,15 @@ This updated screenshot captures the high-fidelity glassmorphic container layout
 ### 💡 Visual Compromises & Technical Decisions
 *   **Manual Screen Capturing:** To complete visual check-pointing for Batch 3, actual runtime screenshots of this updated Settings screen should be manually recaptured next.
 
+---
+
+## Batch 3 Runtime Screenshot Captured
+
+Actual runtime screenshot has now been captured for the polished Settings interface:
+- docs/screenshots/runtime-settings.png
+
+This screenshot should be used to guide future replacement of concept mockups once the Dashboard is also polished.
+
+
 
 
