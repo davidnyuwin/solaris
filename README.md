@@ -73,6 +73,21 @@ During **Phase 1**, the live service supports:
 
 *Note: Live command submissions and chat sessions are disabled or marked offline in Phase 1 pending future WebSocket integration.*
 
+## 🔍 Diagnostic Testing & Smoke Tests
+
+To verify endpoint connectivity without relying on standard unit test compilations, a lightweight bash test utility is provided:
+
+```bash
+# Execute local REST endpoint probes
+./scripts/smoke-test.sh
+```
+
+### ⚠️ Phase 1 Boundaries & Technical Limitations
+*   **Read-Only Scope:** Phase 1 integration maps status values, session timelines, and trace console outputs over REST.
+*   **Commands Unimplemented:** Sending command prompts in live mode is currently blocked; all submissions report a custom `"Live command transport not implemented yet"` response.
+*   **Mocked Telemetries:** Active model performance latency health (`ProviderHealth`) remains safely mocked until a dedicated server health-check API is confirmed.
+*   **Offline Fallback:** If your local daemon web interface is down (e.g. missing bundled `fastapi` dependencies in your app resources), the companion degrades gracefully, reporting a friendly connection warning in Settings and allowing a seamless switch to **Mock Data Mode** to keep design iterations intact.
+
 ---
 
 ## 🗺️ Roadmap

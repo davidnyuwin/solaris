@@ -1,5 +1,30 @@
 import Foundation
 
+// MARK: - Audited Failure Handling
+
+public enum HermesError: LocalizedError {
+    case notRunning(URL)
+    case invalidURL
+    case invalidPayload(Error)
+    case timeout
+    case httpError(statusCode: Int)
+    
+    public var errorDescription: String? {
+        switch self {
+        case .notRunning(let url):
+            return "Cannot reach Hermes daemon at \(url.absoluteString). Please check if 'hermes dashboard --port \(url.port ?? 9119)' is running locally."
+        case .invalidURL:
+            return "The specified API Endpoint URL is malformed."
+        case .invalidPayload(let err):
+            return "Connected to server, but the JSON payload did not match the expected contract. Underlay error: \(err.localizedDescription)"
+        case .timeout:
+            return "The request to the Hermes server timed out (limit: 4.0s)."
+        case .httpError(let code):
+            return "The Hermes server responded with an unhandled HTTP code: \(code)."
+        }
+    }
+}
+
 // MARK: - API DTOs
 
 public struct StatusDTO: Codable {
@@ -105,7 +130,7 @@ public final class LiveHermesService: HermesService, @unchecked Sendable {
     public init(baseURL: URL = URL(string: "http://127.0.0.1:9119")!) {
         self.baseURL = baseURL
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10.0
+        config.timeoutIntervalForRequest = 4.0 // Hardened request timeout
         self.session = URLSession(configuration: config)
     }
     
@@ -113,18 +138,34 @@ public final class LiveHermesService: HermesService, @unchecked Sendable {
         let url = baseURL.appendingPathComponent("/api/status")
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 4.0
         
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw HermesError.invalidPayload(URLError(.badServerResponse))
+            }
+            guard httpResponse.statusCode == 200 else {
+                throw HermesError.httpError(statusCode: httpResponse.statusCode)
+            }
+            do {
+                let dto = try JSONDecoder().decode(StatusDTO.self, from: data)
+                return dto.toDomain()
+            } catch {
+                throw HermesError.invalidPayload(error)
+            }
+        } catch let error as URLError {
+            if error.code == .timedOut {
+                throw HermesError.timeout
+            } else {
+                throw HermesError.notRunning(baseURL)
+            }
+        } catch {
+            throw error
         }
-        
-        let dto = try JSONDecoder().decode(StatusDTO.self, from: data)
-        return dto.toDomain()
     }
     
     public func getRecentRuns() async throws -> [HermesRun] {
-        // Query verified path `/api/sessions`
         var urlComponents = URLComponents(url: baseURL.appendingPathComponent("/api/sessions"), resolvingAgainstBaseURL: false)
         urlComponents?.queryItems = [
             URLQueryItem(name: "limit", value: "20"),
@@ -132,23 +173,40 @@ public final class LiveHermesService: HermesService, @unchecked Sendable {
         ]
         
         guard let url = urlComponents?.url else {
-            throw URLError(.badURL)
+            throw HermesError.invalidURL
         }
         
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 4.0
         
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw HermesError.invalidPayload(URLError(.badServerResponse))
+            }
+            guard httpResponse.statusCode == 200 else {
+                throw HermesError.httpError(statusCode: httpResponse.statusCode)
+            }
+            do {
+                let dto = try JSONDecoder().decode(SessionsResponseDTO.self, from: data)
+                return dto.toDomain()
+            } catch {
+                throw HermesError.invalidPayload(error)
+            }
+        } catch let error as URLError {
+            if error.code == .timedOut {
+                throw HermesError.timeout
+            } else {
+                throw HermesError.notRunning(baseURL)
+            }
+        } catch {
+            throw error
         }
-        
-        let dto = try JSONDecoder().decode(SessionsResponseDTO.self, from: data)
-        return dto.toDomain()
     }
     
     public func getProviderHealth() async throws -> [ProviderHealth] {
-        // Leave provider health mocked/marked unavailable since no direct health endpoint is exposed.
+        // Leave health metrics mocked until a real telemetry endpoint is verified
         return [
             ProviderHealth(name: "Hermes Daemon Gateway", isOnline: true, latencyMs: 12, successRate: 1.0),
             ProviderHealth(name: "OpenRouter (Model Info)", isOnline: true, latencyMs: 220, successRate: 0.99),
@@ -164,23 +222,39 @@ public final class LiveHermesService: HermesService, @unchecked Sendable {
         ]
         
         guard let url = urlComponents?.url else {
-            throw URLError(.badURL)
+            throw HermesError.invalidURL
         }
         
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 4.0
         
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw HermesError.invalidPayload(URLError(.badServerResponse))
+            }
+            guard httpResponse.statusCode == 200 else {
+                throw HermesError.httpError(statusCode: httpResponse.statusCode)
+            }
+            do {
+                let dto = try JSONDecoder().decode(LogsResponseDTO.self, from: data)
+                return dto.toDomain()
+            } catch {
+                throw HermesError.invalidPayload(error)
+            }
+        } catch let error as URLError {
+            if error.code == .timedOut {
+                throw HermesError.timeout
+            } else {
+                throw HermesError.notRunning(baseURL)
+            }
+        } catch {
+            throw error
         }
-        
-        let dto = try JSONDecoder().decode(LogsResponseDTO.self, from: data)
-        return dto.toDomain()
     }
     
     public func sendCommand(_ command: String) async throws -> HermesResponse {
-        // Return a clear unimplemented marker response as command REST transport is not in phase 1.
         let timestamp = Date()
         let fakeRun = HermesRun(
             id: "unimplemented",

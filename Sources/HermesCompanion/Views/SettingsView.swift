@@ -5,6 +5,14 @@ public struct SettingsView: View {
     @State private var showingSaveAlert = false
     @AppStorage("UseMockService") private var useMockService = true
     
+    enum TestStatus: Equatable {
+        case idle
+        case testing
+        case success
+        case failure(String)
+    }
+    @State private var testStatus: TestStatus = .idle
+    
     public init(viewModel: HermesViewModel) {
         self.viewModel = viewModel
     }
@@ -13,19 +21,64 @@ public struct SettingsView: View {
         Form {
             Section(header: Text("Hermes Integration Endpoint").foregroundColor(.white.opacity(0.5))) {
                 VStack(alignment: .leading, spacing: 8) {
-                    TextField("Server Endpoint URL", text: $viewModel.apiEndpoint)
-                        .textFieldStyle(.roundedBorder)
-                        .foregroundColor(.white)
+                    HStack(spacing: 12) {
+                        TextField("Server Endpoint URL", text: $viewModel.apiEndpoint)
+                            .textFieldStyle(.roundedBorder)
+                            .foregroundColor(.white)
+                            .onChange(of: viewModel.apiEndpoint) {
+                                testStatus = .idle
+                            }
+                        
+                        Button(action: testConnection) {
+                            if testStatus == .testing {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 16, height: 16)
+                            } else {
+                                Text("Test Connection")
+                            }
+                        }
+                        .disabled(viewModel.apiEndpoint.isEmpty || testStatus == .testing)
+                    }
                     
-                    Text("Specify the URL of your local Hermes Agent API relay daemon. E.g. http://localhost:5080.")
+                    // Visual network diagnostic reports
+                    switch testStatus {
+                    case .idle:
+                        Text("Specify the URL of your local Hermes Agent API relay daemon. E.g. http://localhost:9119.")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
+                    case .testing:
+                        Text("Probing local daemon on port \(URL(string: viewModel.apiEndpoint)?.port ?? 9119)...")
+                            .font(.caption)
+                            .foregroundColor(.amber)
+                    case .success:
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.emerald)
+                            Text("Connection established successfully! Hermes is online.")
+                                .foregroundColor(.emerald)
+                        }
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
+                    case .failure(let err):
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.rose)
+                            Text(err)
+                                .foregroundColor(.rose)
+                        }
+                        .font(.caption)
+                    }
                 }
                 .padding(.vertical, 4)
             }
             
             Section(header: Text("App Preference").foregroundColor(.white.opacity(0.5))) {
                 Toggle("Developer Mock Data Mode", isOn: $useMockService)
+                    .onChange(of: useMockService) {
+                        Task {
+                            await viewModel.loadAllData()
+                        }
+                    }
                 Toggle("Launch at Login", isOn: .constant(true))
                 Toggle("Keep Window Floating on Top", isOn: .constant(false))
             }
@@ -47,6 +100,26 @@ public struct SettingsView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text("Endpoint updated to \(viewModel.apiEndpoint). Services will sync using this pathway in the future.")
+        }
+    }
+    
+    private func testConnection() {
+        testStatus = .testing
+        
+        let trimmed = viewModel.apiEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed) else {
+            testStatus = .failure("Invalid URL format.")
+            return
+        }
+        
+        let testService = LiveHermesService(baseURL: url)
+        Task {
+            do {
+                _ = try await testService.getStatus()
+                testStatus = .success
+            } catch {
+                testStatus = .failure(error.localizedDescription)
+            }
         }
     }
 }
