@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-02
+
+### Added
+- Read-only Hermes CLI executor using Swift `Process`
+- Strict allowlist for safe CLI commands
+- Defensive plain-text parsers for `hermes status` and `hermes gateway status`
+- Local Diagnostics enrichment for active provider, active model, gateway state, and recent gateway events
+- CLI output path redaction for local privacy
+
+### Security
+- Blocks mutating or external side-effect commands, including `hermes send`, `hermes model set`, and gateway lifecycle commands
+- Does not use shell execution
+- Does not accept arbitrary user-provided command arguments
+- Does not surface `hermes config show` in UI
+
+### Notes
+- Hermes CLI does not currently provide JSON output for these read-only commands.
+- Parsing is based on stable text prefixes and degrades gracefully if output changes.
+- This is not live command/control.
+- WebSocket and command transport remain unimplemented.
+
+---
+
 ## [0.3.0] - 2026-06-02
 
 ### Added
