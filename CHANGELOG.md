@@ -7,18 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-06-02
 
-This release introduces **Solaris v0.3 Packaging Baseline**, adding robust local app bundling, optional ad-hoc codesigning for local integrity, and a local ZIP artifact packaging pipeline.
-
 ### Added
-- Unified local app bundler script support (`scripts/build-app.sh`)
-- Optional ad-hoc codesigning flag (`--sign`) employing identity `-` and verification validation checks
-- Local ZIP packaging flag (`--zip`) utilizing native `ditto` to generate standard release archives (`dist/Solaris-v0.3.0-dev.zip`)
-- Compiled macOS multi-resolution `Solaris.icns` asset compilation pipeline via native `sips` and `iconutil`
-- Detailed packaging reference documentation (`docs/packaging.md`) covering ad-hoc limitations, sandbox deferral rationale, and local diagnostics compatibility
+- Local `.app` bundle packaging workflow
+- Solaris app icon bundling pipeline
+- Optional ad-hoc signing for local code integrity
+- Local ZIP artifact generation
+- GitHub Actions CI for build and packaging validation
+- CI artifact upload for development testing
 
-### Changed
-- Refactored `Info.plist` generation to dynamic templating driven by unified version variables (`APP_NAME`, `APP_VERSION`, `BUNDLE_ID`)
-- Updated `README.md` to highlight `--sign` and `--zip` parameters and reference the packaging guide
+### Notes
+- The app bundle is not notarized.
+- The app bundle is not Developer ID signed.
+- The app is not sandboxed.
+- Ad-hoc signing is for local integrity only.
+- Local Diagnostics Mode may require future design changes before sandboxing is viable.
 
 ---
 
