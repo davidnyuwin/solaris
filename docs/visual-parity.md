@@ -143,3 +143,26 @@ Actual runtime screenshots have now been captured for:
 - Settings
 
 These should be used to guide the next visual polish batch before replacing README concept mockups.
+
+---
+
+## Batch 2: Diagnostics UI Polish (June 2, 2026)
+
+### ✅ What Changed
+*   **Rebuilt Diagnostics Console View:** Transformed the basic vertical list in `ProvidersView` to a polished, premium macOS native-feeling diagnostics dashboard with a professional header: "Local Diagnostics" and subtitle: "Local process, log, and dashboard API visibility for Hermes Agent."
+*   **Created DiagnosticPanel Component:** Developed a reusable glassmorphic container with native macOS material blur (`VisualEffectView`), subtle border gradients, and distinct titles, subtitles, and icons.
+*   **Created SeverityBadge Component:** Added high-contrast, beautiful inline badge styling for `INFO`, `WARN`, `ERROR`, and `DEBUG` severity levels.
+*   **Created ProcessStatusRow Component:** Standardized local checks (Gateway Process, Agent Log, Gateway Log, Dashboard API, plus active API providers/relays) into high-fidelity status rows showing clean status badges (Active, Stable, Idle, Missing, Unavailable), custom detail text, and active PIDs.
+*   **Created DiagnosticsLogConsole Component:** Built a robust, monospaced scrolling logging console pane that handles empty states elegantly, wraps log messages gracefully, uses color-coded row backdrops for warnings/errors, and offers great performance for 100-200 lines.
+*   **Implemented Local Privacy Mode:** Added a checkbox Toggle to the dashboard header that allows redacting active process PIDs (displaying `[REDACTED]`), stripping absolute directories in process lists (representing them as relative `~/.hermes/...` paths), and using regex-based user folder obfuscation (e.g. mapping `/Users/dnguyen` to `~`) on terminal log outputs.
+*   **Adaptive Responsive Layout:** The diagnostics screen adjusts dynamically to host window widths, providing a side-by-side double column pane on wide displays (>760px) and a single-column stack on compact displays.
+*   **Integrated Sidebar Branding:** Renamed the navigation sidebar label from "Provider Health" to "Local Diagnostics" and customized the icon to `waveform.path.ecg` for a clean diagnostics console visual identity.
+
+### ⚠️ What Remains
+*   **Custom Settings Cards:** Batch 3 is required to convert default Form structures to elegant connection panels.
+*   **Three-Column Dashboard Layout:** Evolve the Dashboard view to support greetings, task queues, and sidebar columns as shown in the concept mockups.
+
+### 💡 Visual Compromises & Technical Decisions
+*   **Offline Telemetry Fallbacks:** In Mock Mode, since `HermesStatus` lacks system daemon values, we automatically fallback to active states to ensure mock representations look fully alive and functional.
+*   **Manual Screen Capturing:** To complete visual check-pointing, actual runtime screenshots of this updated screen should be manually recaptured and compared.
+

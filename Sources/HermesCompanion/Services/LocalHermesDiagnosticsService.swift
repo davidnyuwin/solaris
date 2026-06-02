@@ -44,7 +44,8 @@ public final class LocalHermesDiagnosticsService: HermesService, @unchecked Send
             agentLogFound: isAgentLogFound,
             gatewayLogFound: isGatewayLogFound,
             agentLogPath: agentLogURL.path,
-            gatewayLogPath: gatewayLogURL.path
+            gatewayLogPath: gatewayLogURL.path,
+            gatewayPID: isGatewayRunning ? getGatewayPID() : nil
         )
     }
     

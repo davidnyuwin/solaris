@@ -3,7 +3,7 @@ import SwiftUI
 public enum NavigationItem: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case runs = "Recent Runs"
-    case providers = "Provider Health"
+    case providers = "Local Diagnostics"
     case settings = "Settings"
     
     public var id: String { self.rawValue }
@@ -12,7 +12,7 @@ public enum NavigationItem: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "bolt.horizontal.circle.fill"
         case .runs: return "doc.text.magnifyingglass"
-        case .providers: return "network"
+        case .providers: return "waveform.path.ecg"
         case .settings: return "gearshape.fill"
         }
     }

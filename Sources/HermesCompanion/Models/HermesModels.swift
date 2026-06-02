@@ -20,6 +20,7 @@ public struct HermesStatus: Codable {
     public let gatewayLogFound: Bool?
     public let agentLogPath: String?
     public let gatewayLogPath: String?
+    public let gatewayPID: String?
     
     public init(
         state: HermesState,
@@ -31,7 +32,8 @@ public struct HermesStatus: Codable {
         agentLogFound: Bool? = nil,
         gatewayLogFound: Bool? = nil,
         agentLogPath: String? = nil,
-        gatewayLogPath: String? = nil
+        gatewayLogPath: String? = nil,
+        gatewayPID: String? = nil
     ) {
         self.state = state
         self.uptimeSeconds = uptimeSeconds
@@ -43,6 +45,7 @@ public struct HermesStatus: Codable {
         self.gatewayLogFound = gatewayLogFound
         self.agentLogPath = agentLogPath
         self.gatewayLogPath = gatewayLogPath
+        self.gatewayPID = gatewayPID
     }
 }
 
