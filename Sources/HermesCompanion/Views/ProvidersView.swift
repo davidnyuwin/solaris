@@ -309,7 +309,15 @@ public struct ProvidersView: View {
                 Divider()
                     .background(Color.white.opacity(0.06))
                 
-                let cliStatusText = status?.cliStatus ?? "Unavailable"
+                let cliStatusRaw = status?.cliStatus
+                let cliStatusKind = classifyCLIStatus(cliStatusRaw)
+                let cliStatusType: ProcessStatusType = {
+                    switch cliStatusKind {
+                    case .available: return .stable
+                    case .timedOut, .emptyStdout, .noFieldsParsed: return .idle
+                    case .pythonMissing, .nonZeroExit, .unknown: return .unavailable
+                    }
+                }()
                 let cliLastCheckedText: String = {
                     if let date = status?.cliLastChecked {
                         let formatter = DateFormatter()
@@ -321,12 +329,13 @@ public struct ProvidersView: View {
                 }()
                 
                 ProcessStatusRow(
-                    name: "Hermes CLI Status",
-                    status: cliStatusText.starts(with: "Available") ? .stable : (cliStatusText.contains("Warning") ? .idle : .unavailable),
-                    detailText: "Source: Read-only CLI • \(cliStatusText) • \(cliLastCheckedText)",
+                    name: "Read-only CLI Status",
+                    status: cliStatusType,
+                    detailText: "\(cliStatusKind.explanation) • \(cliLastCheckedText)",
                     pidText: nil,
                     iconName: "terminal",
-                    isPrivacyActive: isPrivacyModeActive
+                    isPrivacyActive: isPrivacyModeActive,
+                    customAccessibilityHint: "Shows whether Solaris can read safe Hermes status information"
                 )
                 
                 if !viewModel.providers.isEmpty {

@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Native Pause/Resume Diagnostics Logs menu command (Command+Shift+P)
 - Keyboard shortcut for pausing and resuming visible diagnostics logs
 
+### Changed
+- Improved visual status handling for read-only Hermes CLI timeout, unavailable, and parse warning states
+- Added dedicated user-facing explanations for each CLI status state (timeout, Python missing, non-zero exit, parse warnings)
+- Added `CLIStatusPresentation` model for structured CLI status-to-presentation mapping
+
+### Accessibility
+- Added clearer accessibility values for read-only Hermes CLI status states
+- "Read-only CLI Status" row now exposes per-state explanation as accessibility value
+
 ### Security
 - Diagnostic exports always redact local paths, process IDs, and token-like strings
 - Diagnostic exports require explicit user save-panel confirmation

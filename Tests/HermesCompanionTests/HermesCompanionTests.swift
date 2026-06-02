@@ -215,6 +215,60 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertFalse(viewModel.isDiagnosticsLogPaused)
         XCTAssertEqual(viewModel.pausedLogs.count, initialLogCount)
     }
+    
+    func testClassifyCLIStatusAvailable() {
+        let kind = classifyCLIStatus("Available")
+        XCTAssertEqual(kind, .available)
+        XCTAssertEqual(kind.label, "Available")
+        XCTAssertEqual(kind.explanation, "Hermes CLI status checks are working.")
+    }
+    
+    func testClassifyCLIStatusTimedOut() {
+        let kind = classifyCLIStatus("Timed out")
+        XCTAssertEqual(kind, .timedOut)
+        XCTAssertEqual(kind.label, "Timed out")
+        XCTAssertEqual(kind.explanation, "The read-only CLI check did not finish in time.")
+    }
+    
+    func testClassifyCLIStatusPythonMissing() {
+        let kind = classifyCLIStatus("Unavailable (Python missing)")
+        XCTAssertEqual(kind, .pythonMissing)
+        XCTAssertEqual(kind.label, "Unavailable")
+        XCTAssertEqual(kind.explanation, "Hermes Studio bundled Python was not found.")
+    }
+    
+    func testClassifyCLIStatusNonZeroExit() {
+        let kind = classifyCLIStatus("Unavailable (Exit code: 1)")
+        XCTAssertEqual(kind, .nonZeroExit)
+        XCTAssertEqual(kind.label, "Unavailable")
+        XCTAssertEqual(kind.explanation, "Hermes CLI returned an error.")
+    }
+    
+    func testClassifyCLIStatusEmptyStdout() {
+        let kind = classifyCLIStatus("Parse warning (Empty stdout)")
+        XCTAssertEqual(kind, .emptyStdout)
+        XCTAssertEqual(kind.label, "Parse warning")
+        XCTAssertEqual(kind.explanation, "Hermes CLI returned no output.")
+    }
+    
+    func testClassifyCLIStatusNoFieldsParsed() {
+        let kind = classifyCLIStatus("Parse warning (No fields parsed)")
+        XCTAssertEqual(kind, .noFieldsParsed)
+        XCTAssertEqual(kind.label, "Parse warning")
+        XCTAssertEqual(kind.explanation, "Hermes CLI output changed or could not be parsed.")
+    }
+    
+    func testClassifyCLIStatusNil() {
+        let kind = classifyCLIStatus(nil)
+        XCTAssertEqual(kind, .unknown)
+        XCTAssertEqual(kind.label, "Unavailable")
+        XCTAssertEqual(kind.explanation, "Read-only CLI status is not available.")
+    }
+    
+    func testClassifyCLIStatusArbitraryString() {
+        let kind = classifyCLIStatus("Something unexpected")
+        XCTAssertEqual(kind, .unknown)
+    }
 }
 
 

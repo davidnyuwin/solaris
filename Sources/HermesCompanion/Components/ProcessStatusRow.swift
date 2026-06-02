@@ -26,6 +26,7 @@ public struct ProcessStatusRow: View {
     let pidText: String?
     let iconName: String
     let isPrivacyActive: Bool
+    let customAccessibilityHint: String?
     
     public init(
         name: String,
@@ -33,7 +34,8 @@ public struct ProcessStatusRow: View {
         detailText: String? = nil,
         pidText: String? = nil,
         iconName: String,
-        isPrivacyActive: Bool = false
+        isPrivacyActive: Bool = false,
+        customAccessibilityHint: String? = nil
     ) {
         self.name = name
         self.status = status
@@ -41,6 +43,7 @@ public struct ProcessStatusRow: View {
         self.pidText = pidText
         self.iconName = iconName
         self.isPrivacyActive = isPrivacyActive
+        self.customAccessibilityHint = customAccessibilityHint
     }
     
     public var body: some View {
@@ -98,7 +101,7 @@ public struct ProcessStatusRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name)
         .accessibilityValue("\(status.rawValue)\(sanitizedAccessibilityDetail)")
-        .accessibilityHint("Local diagnostics status row")
+        .accessibilityHint(customAccessibilityHint ?? "Local diagnostics status row")
     }
     
     private func redactPath(_ path: String) -> String {
