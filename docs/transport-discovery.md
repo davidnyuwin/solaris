@@ -2,7 +2,7 @@
 
 ## Status
 
-Transport discovery phase complete. The primary safe integration path is read-only CLI status enrichment. In v0.5, this path has been extensively hardened. Live command/control, WebSocket connections, and REST server triggers remain deferred/future work.
+Transport discovery phase complete. The primary safe integration path is read-only CLI status enrichment. In v0.5, this path has been extensively hardened. In v0.6, we completed a robust Profile Discovery Threat Model. Live command/control, WebSocket connections, profile parsing, and REST server triggers remain deferred/future work.
 
 ---
 

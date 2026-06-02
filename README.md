@@ -116,6 +116,7 @@ To verify endpoint connectivity without relying on standard unit test compilatio
 *   **Mock Mode Default:** Mock Mode is the default and safest mode for public demos. It runs completely locally in memory with simulated data, requiring no external processes or permissions.
 *   **Local Diagnostics Mode:** Safely reads local background process states and live logging records directly from the developer's machine (`~/.hermes/logs/agent.log` and `~/.hermes/logs/gateway.log`).
 *   **No Credentials Required:** The current application operates entirely without requesting, storing, or requiring any API keys or tokens.
+*   **Local Profiles Discovery:** Intentionally deferred at this stage. It has been evaluated in a robust security threat model under [profile-discovery-threat-model.md](docs/profile-discovery-threat-model.md) in v0.6 to enforce strict metadata whitelisting and path redacting protocols before any config parsing is implemented.
 *   **Future Authentication Security:** Any future access tokens or authorization credentials must use the secure **macOS Keychain services API**, never in committed configuration files or UserDefaults.
 
 ## 📦 Local App Bundle

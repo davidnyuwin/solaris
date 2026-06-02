@@ -2,7 +2,7 @@
 
 ## Status
 
-Read-only CLI status wrapper has been fully implemented in Local Diagnostics Mode and hardened in v0.5.
+Read-only CLI status wrapper has been fully implemented in Local Diagnostics Mode and hardened in v0.5. In v0.6, we completed a robust Profile Discovery Threat Model before adding any YAML config parser routines.
 
 ## v0.5 Read-Only CLI Hardening
 
