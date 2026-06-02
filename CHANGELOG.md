@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+- Command+R keyboard shortcut for safe Local Diagnostics refresh
+- Native menu command for Refresh Diagnostics (disabled on non-diagnostics views and during active refresh)
+- Shortcut hint displayed on the in-app refresh button
+
 ---
 
 ## v0.7.0 - Safe Diagnostics Controls

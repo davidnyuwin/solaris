@@ -9,5 +9,8 @@ struct SolarisApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact)
+        .commands {
+            DiagnosticsCommands()
+        }
     }
 }

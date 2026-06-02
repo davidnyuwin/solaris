@@ -54,6 +54,9 @@ public struct MainView: View {
                 }
                 .navigationTitle(navigationSelection?.rawValue ?? "Solaris")
             }
+            // Publish focused values so DiagnosticsCommands can reach them from the menu bar
+            .focusedValue(\.hermesViewModel, viewModel)
+            .focusedValue(\.navigationSelection, navigationSelection ?? .dashboard)
         }
         .task {
             await viewModel.loadAllData()

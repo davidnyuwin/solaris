@@ -103,7 +103,7 @@ public struct ProvidersView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 10, weight: .semibold))
-                            Text(viewModel.isRefreshingDiagnostics ? "Refreshing..." : "Refresh")
+                            Text(viewModel.isRefreshingDiagnostics ? "Refreshing..." : "Refresh  ⌘R")
                                 .font(.system(size: 11, weight: .medium))
                         }
                         .padding(.horizontal, 10)
@@ -121,7 +121,7 @@ public struct ProvidersView: View {
                     .padding(.trailing, 10)
                     .padding(.top, 4)
                     .accessibilityLabel("Refresh local diagnostics")
-                    .accessibilityHint("Runs read-only diagnostics checks now")
+                    .accessibilityHint("Runs read-only diagnostics checks. Keyboard shortcut Command R.")
                     
                     Toggle(isOn: $isPrivacyModeActive) {
                         VStack(alignment: .leading, spacing: 1) {
