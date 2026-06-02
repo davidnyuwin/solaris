@@ -22,9 +22,12 @@ Solaris is built as a **desktop control panel** rather than a generic chat shell
 - **Structured Cards**: Distinct responsive tiles displaying provider latency metrics, parsed error logs, and execution summaries.
 - **Capsule Command Bar**: Quick bottom command bar with micro-actions and attachment slots.
 
-### 📸 Screenshots
+### 📸 Interface Preview
 
-| Dashboard | Local Diagnostics | Settings |
+> [!NOTE]
+> These preview images are high-fidelity concept mockups representing the intended Solaris interface. Runtime screenshots will replace them as the app UI stabilizes.
+
+| Dashboard Mockup | Local Diagnostics Mockup | Settings Mockup |
 | :---: | :---: | :---: |
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Local Diagnostics](docs/screenshots/local-diagnostics.png) | ![Settings](docs/screenshots/settings.png) |
 
