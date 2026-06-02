@@ -96,19 +96,11 @@ struct LogConsoleRow: View {
     private var safeMessage: String {
         let msg = log.message
         if isPrivacyActive {
-            return redactPaths(msg)
+            return DiagnosticsRedactor.redact(msg, redactPIDs: true, redactTokens: true)
         }
         return msg
     }
-    
-    private func redactPaths(_ text: String) -> String {
-        var result = text
-        if let userRange = result.range(of: "/Users/[a-zA-Z0-9_-]+", options: .regularExpression) {
-            let matchedUserPath = result[userRange]
-            result = result.replacingOccurrences(of: matchedUserPath, with: "~")
-        }
-        return result
-    }
+
     
     private func formatTimestamp(_ date: Date) -> String {
         let formatter = DateFormatter()

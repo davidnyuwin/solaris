@@ -304,7 +304,64 @@ public struct ProvidersView: View {
             subtitle: "Ingested agent and gateway diagnostics.",
             iconName: "terminal.fill"
         ) {
-            DiagnosticsLogConsole(logs: viewModel.logs, isPrivacyActive: isPrivacyModeActive)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Button(action: {
+                        viewModel.toggleDiagnosticsLogPause()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: viewModel.isDiagnosticsLogPaused ? "play.fill" : "pause.fill")
+                                .font(.system(size: 9))
+                            Text(viewModel.isDiagnosticsLogPaused ? "Resume Logs" : "Pause Logs")
+                                .font(.system(size: 10.5, weight: .medium))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundColor(.white)
+                        .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(viewModel.isDiagnosticsLogPaused ? "Resume diagnostics log updates" : "Pause diagnostics log updates")
+                    
+                    Button(action: {
+                        viewModel.copyDiagnosticsSummaryToClipboard()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 9))
+                            Text(viewModel.copyFeedbackText ?? "Copy Summary")
+                                .font(.system(size: 10.5, weight: .medium))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundColor(viewModel.copyFeedbackText != nil ? .emerald : .white)
+                        .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Copy redacted diagnostics summary")
+                    
+                    Spacer()
+                    
+                    if viewModel.isDiagnosticsLogPaused {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.amber)
+                                .frame(width: 6, height: 6)
+                            Text("Logs paused")
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundColor(.amber.opacity(0.9))
+                        }
+                        .accessibilityLabel("Log updates are currently paused")
+                    }
+                }
+                
+                DiagnosticsLogConsole(
+                    logs: viewModel.isDiagnosticsLogPaused ? viewModel.pausedLogs : viewModel.logs,
+                    isPrivacyActive: isPrivacyModeActive
+                )
+            }
         }
     }
     

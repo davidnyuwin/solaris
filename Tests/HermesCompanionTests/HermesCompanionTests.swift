@@ -110,5 +110,16 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertEqual(parsedGateway.recentEvents[1], "[2026-06-02 12:44:50] Gateway process spawned (PID: 12345).")
         XCTAssertEqual(parsedGateway.recentEvents[2], "[2026-06-02 12:44:45] Gateway initialized.")
     }
+    
+    func testDiagnosticsRedactor() {
+        let rawMessage = "User folder is /Users/someuser/documents and PID: 12345 or Process ID: 9876 with hex_hash 3a7f8c9b2d1e0f3a or bearer: secret-token-xyz"
+        let redacted = DiagnosticsRedactor.redact(rawMessage)
+        XCTAssertTrue(redacted.contains("User folder is ~/documents"))
+        XCTAssertTrue(redacted.contains("PID: [PID]"))
+        XCTAssertTrue(redacted.contains("Process ID: [PID]"))
+        XCTAssertTrue(redacted.contains("hex_hash [REDACTED_TOKEN]"))
+        XCTAssertTrue(redacted.contains("bearer: [REDACTED]"))
+    }
 }
+
 

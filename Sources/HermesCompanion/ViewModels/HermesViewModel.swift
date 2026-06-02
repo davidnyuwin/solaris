@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 @MainActor
 public class HermesViewModel: ObservableObject {
@@ -20,6 +21,19 @@ public class HermesViewModel: ObservableObject {
     @Published public var isRefreshingDiagnostics: Bool = false
     @Published public var lastDiagnosticsRefreshAt: Date?
     @Published public var diagnosticsRefreshError: String?
+    
+    // Batch 2 Diagnostics controls
+    @Published public var isDiagnosticsLogPaused: Bool = false
+    @Published public var pausedLogs: [LogLine] = []
+    @Published public var copyFeedbackText: String? = nil
+    
+    public func toggleDiagnosticsLogPause() {
+        isDiagnosticsLogPaused.toggle()
+        if isDiagnosticsLogPaused {
+            pausedLogs = logs
+        }
+    }
+
     
     public init(service: any HermesService) {
         self.service = service
@@ -112,5 +126,94 @@ public class HermesViewModel: ObservableObject {
     public func executeQuickAction(_ actionName: String) async {
         currentInput = actionName
         await sendCommand()
+    }
+    
+    public func generateDiagnosticsSummary() -> String {
+        var summary = "=== Solaris Diagnostics Summary ===\n"
+        summary += "Solaris Version: 0.7.0-dev\n"
+        
+        let savedMode = UserDefaults.standard.string(forKey: "HermesServiceMode") ?? "mock"
+        let modeName: String
+        if savedMode == "diagnostics" {
+            modeName = "Local Diagnostics Mode"
+        } else if savedMode == "rest" {
+            modeName = "Experimental REST Mode"
+        } else {
+            modeName = "Mock Mode"
+        }
+        summary += "Active Mode: \(modeName)\n"
+        
+        if let lastChecked = lastDiagnosticsRefreshAt {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            summary += "Last Checked: \(formatter.string(from: lastChecked))\n"
+        } else {
+            summary += "Last Checked: Never\n"
+        }
+        
+        if let status = status {
+            summary += "Gateway State: \(status.gatewayRunning ?? false ? "Active" : "Offline")\n"
+            summary += "Dashboard API: \(status.dashboardAvailable ?? false ? "Active (Port 9119)" : "Offline")\n"
+            
+            let rawCLIStatus = status.cliStatus ?? "Unavailable"
+            summary += "Hermes CLI Status: \(DiagnosticsRedactor.redact(rawCLIStatus, redactPIDs: true, redactTokens: true))\n"
+            
+            if let provider = status.activeProvider {
+                summary += "Active Provider: \(provider)\n"
+            }
+            if let model = status.activeModel {
+                summary += "Active Model: \(model)\n"
+            }
+        } else {
+            summary += "Gateway State: Unknown\n"
+            summary += "Dashboard API: Unknown\n"
+            summary += "Hermes CLI Status: Unknown\n"
+        }
+        
+        if !providers.isEmpty {
+            summary += "Active Providers / Relays:\n"
+            for provider in providers {
+                summary += "  - \(provider.name): \(provider.isOnline ? "Online (\(provider.latencyMs)ms)" : "Offline")\n"
+            }
+        }
+        
+        summary += "Diagnostics Log Count: \(logs.count)\n"
+        
+        // Grab recent log entries, max 5, and sanitize
+        let recentLogs = logs.suffix(5)
+        if !recentLogs.isEmpty {
+            summary += "Recent Event Summaries (max 5):\n"
+            for log in recentLogs {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "HH:mm:ss.SSS"
+                let timestampStr = formatter.string(from: log.timestamp)
+                let sanitizedMsg = DiagnosticsRedactor.redact(log.message, redactPIDs: true, redactTokens: true)
+                summary += "  [\(timestampStr)] [\(log.level)] \(sanitizedMsg)\n"
+            }
+        }
+        
+        summary += "===================================\n"
+        return summary
+    }
+    
+    public func copyDiagnosticsSummaryToClipboard() {
+        let summary = generateDiagnosticsSummary()
+        let pasteboard = NSPasteboard.general
+        pasteboard.declareTypes([.string], owner: nil)
+        let success = pasteboard.setString(summary, forType: .string)
+        
+        if success {
+            copyFeedbackText = "Copied"
+        } else {
+            copyFeedbackText = "Copy failed"
+        }
+        
+        // Reset feedback after 2 seconds
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if self.copyFeedbackText == "Copied" || self.copyFeedbackText == "Copy failed" {
+                self.copyFeedbackText = nil
+            }
+        }
     }
 }

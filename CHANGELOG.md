@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Manual refresh control for Local Diagnostics
 - Last checked timestamp for diagnostics refreshes
 - Refreshing/error states for diagnostics updates
+- Pause/resume control for diagnostics log display
+- Copy redacted diagnostics summary action
+
+### Security
+- Copied diagnostics summaries redact local paths, process IDs, and token-like strings
 
 ---
 
