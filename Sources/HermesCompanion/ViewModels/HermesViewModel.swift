@@ -198,6 +198,76 @@ public class HermesViewModel: ObservableObject {
             )
         }
         
+        // Check if command is a chat prompt query
+        if command.lowercased().hasPrefix("/chat") {
+            let prompt = command.hasPrefix("/chat ")
+                ? String(command.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
+            
+            let currentMode = UserDefaults.standard.string(forKey: "HermesServiceMode") ?? "mock"
+            if currentMode == "mock" {
+                // Mock execution flow
+                let mockOpenAIKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+                let rawMockResponse = """
+                Hello! This is a mock chat response for your prompt: "\(prompt)".
+                \u{001B}[31mThis text had ANSI colors\u{001B}[0m and a hidden link \u{001B}]8;;http://malicious.url\u{0007}Click Here\u{001B}]8;;\u{0007}.
+                System user directory: /Users/sysadmin/hermes-agent
+                Secret OpenAI key: \(mockOpenAIKey)
+                API_SECRET = 'my-super-secret-credentials'
+                Commit hash 8220c964ecedcc55ffceb7ce4aaeba5f038cc25c.
+                """
+
+                
+                // Pass mock response through OutputSanitiser
+                let sanitisedResult = OutputSanitiser.sanitise(rawMockResponse)
+                
+                // Simulate network latency delay (800ms)
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                
+                let newRun = HermesRun(
+                    id: "run-chat-\(UUID().uuidString.prefix(6).lowercased())",
+                    timestamp: Date(),
+                    prompt: "/chat \(prompt)",
+                    response: sanitisedResult.text,
+                    isSuccess: true,
+                    durationMs: 800
+                )
+                self.runs.insert(newRun, at: 0)
+                
+                // Add log entry
+                self.logs.append(LogLine(
+                    id: UUID().uuidString,
+                    timestamp: Date(),
+                    level: "INFO",
+                    message: "Mock Chat simulation complete. Output sanitised."
+                ))
+                
+                // Update state to idle
+                if let currentStatus = status {
+                    status = HermesStatus(
+                        state: .idle,
+                        uptimeSeconds: currentStatus.uptimeSeconds,
+                        relayConnected: currentStatus.relayConnected,
+                        activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                    )
+                }
+            } else {
+                // Live execution is blocked / fails closed
+                errorMessage = "Remote chat is not enabled yet. Solaris needs a verified safe prompt transport before sending prompts to Hermes."
+                if let currentStatus = status {
+                    status = HermesStatus(
+                        state: .error,
+                        uptimeSeconds: currentStatus.uptimeSeconds,
+                        relayConnected: currentStatus.relayConnected,
+                        activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                    )
+                }
+            }
+            
+            isPendingResponse = false
+            return
+        }
+
         do {
             _ = try await service.sendCommand(command)
             
@@ -219,6 +289,7 @@ public class HermesViewModel: ObservableObject {
                 )
             }
         }
+
         
         isPendingResponse = false
     }

@@ -463,6 +463,71 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertTrue(text.contains("Commit hash: 4ad9f5c9aa10cc3c49003489c26b068e8c95d661"))
         XCTAssertTrue(text.contains("Short hash: 715c9ad"))
     }
+    
+    // MARK: - Batch 2C Prompt Transport & Chat Block Tests
+    
+    func testPromptTransportStrategyEnum() {
+        let allCases = PromptTransportStrategy.allCases
+        XCTAssertTrue(allCases.contains(.stdinSupported))
+        XCTAssertTrue(allCases.contains(.argumentOnlyBlocked))
+        XCTAssertTrue(allCases.contains(.gatewayPreferred))
+        XCTAssertTrue(allCases.contains(.unknownBlocked))
+        
+        XCTAssertEqual(PromptTransportStrategy.stdinSupported.displayName, "Standard Input Pipe (stdin)")
+        XCTAssertEqual(PromptTransportStrategy.argumentOnlyBlocked.displayName, "Command Arguments (Blocked)")
+    }
+    
+    func testMockChatSimulationFlow() async {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        UserDefaults.standard.set("mock", forKey: "HermesServiceMode")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        await viewModel.loadAllData()
+        let initialRunsCount = viewModel.runs.count
+        
+        viewModel.currentInput = "/chat hello there"
+        await viewModel.sendCommand()
+        
+        XCTAssertEqual(viewModel.runs.count, initialRunsCount + 1)
+        XCTAssertEqual(viewModel.runs[0].prompt, "/chat hello there")
+        
+        // Assert mock output was sanitised
+        let responseText = viewModel.runs[0].response
+        XCTAssertTrue(responseText.contains("This text had ANSI colors")) // escapes stripped, raw text preserved
+        XCTAssertFalse(responseText.contains("/Users/sysadmin/")) // path normalised
+        let mockKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+        XCTAssertFalse(responseText.contains(mockKey)) // OpenAI key redacted
+        XCTAssertTrue(responseText.contains("[REDACTED_KEY]"))
+
+        XCTAssertEqual(viewModel.status?.state, .idle)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+    
+    func testLiveChatBlockedFlow() async {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        UserDefaults.standard.set("diagnostics", forKey: "HermesServiceMode")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        await viewModel.loadAllData()
+        let initialRunsCount = viewModel.runs.count
+        
+        viewModel.currentInput = "/chat verify stdin"
+        await viewModel.sendCommand()
+        
+        // No new run is added since execution is blocked
+        XCTAssertEqual(viewModel.runs.count, initialRunsCount)
+        XCTAssertEqual(viewModel.status?.state, .error)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Remote chat is not enabled yet. Solaris needs a verified safe prompt transport before sending prompts to Hermes."
+        )
+    }
 }
 
 
