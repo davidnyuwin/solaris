@@ -66,23 +66,44 @@ public final class RemoteSSHExecutor: Sendable {
         }
     }
 
-    private let sshPath = "/usr/bin/ssh"
+    private let sshPath: String
     private let defaultTimeout: TimeInterval = 8
 
-    public init() {}
+    public init() {
+        self.sshPath = "/usr/bin/ssh"
+    }
 
-    /// Run an allowlisted command on the remote host.
+    #if DEBUG
+    internal init(sshPathOverride: String) {
+        self.sshPath = sshPathOverride
+    }
+    #endif
+
+    /// Run an allowlisted command on the remote host with optional stdin data.
     /// - Parameters:
     ///   - command: The `RemoteHermesCommand` to execute.
     ///   - settings: Connection settings (host, username, port, hermesCommand).
     ///   - timeout: Per-command timeout in seconds (default 8).
+    ///   - stdinData: Optional standard input data payload (max 16KB).
     /// - Returns: A `RemoteSSHResult` with stdout, stderr, exit code, and timing.
     public func execute(
         command: RemoteHermesCommand,
         settings: RemoteHostSettings,
-        timeout: TimeInterval = 8
+        timeout: TimeInterval = 8,
+        stdinData: Data? = nil
     ) async -> RemoteSSHResult {
         let startTime = Date()
+
+        if let stdin = stdinData, stdin.count > 16384 {
+            return RemoteSSHResult(
+                command: command,
+                exitCode: -1,
+                stdout: "",
+                stderr: "Standard input payload exceeds maximum allowed size of 16KB.",
+                duration: 0,
+                timedOut: false
+            )
+        }
 
         guard settings.isValid else {
             return RemoteSSHResult(
@@ -111,8 +132,15 @@ public final class RemoteSSHExecutor: Sendable {
         sshArgs.append(settings.userAtHost)
         sshArgs.append(contentsOf: remoteArgs)
 
-        return await runProcess(arguments: sshArgs, command: command, timeout: timeout, startTime: startTime)
+        return await runProcess(
+            arguments: sshArgs,
+            command: command,
+            timeout: timeout,
+            startTime: startTime,
+            stdinData: stdinData
+        )
     }
+
 
     // MARK: - Private
 
@@ -133,7 +161,8 @@ public final class RemoteSSHExecutor: Sendable {
         arguments: [String],
         command: RemoteHermesCommand,
         timeout: TimeInterval,
-        startTime: Date
+        startTime: Date,
+        stdinData: Data? = nil
     ) async -> RemoteSSHResult {
         return await withCheckedContinuation { continuation in
             let process = Process()
@@ -144,6 +173,11 @@ public final class RemoteSSHExecutor: Sendable {
             let stderrPipe = Pipe()
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
+
+            let stdinPipe = Pipe()
+            if stdinData != nil {
+                process.standardInput = stdinPipe
+            }
 
             // Sendable flag so the timeout task and termination handler share
             // the timed-out state without a data race.
@@ -164,6 +198,10 @@ public final class RemoteSSHExecutor: Sendable {
             process.terminationHandler = { proc in
                 timeoutTask.cancel()
 
+                if stdinData != nil {
+                    try? stdinPipe.fileHandleForWriting.close()
+                }
+
                 let duration = Date().timeIntervalSince(startTime)
                 let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
                 let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
@@ -183,8 +221,23 @@ public final class RemoteSSHExecutor: Sendable {
 
             do {
                 try process.run()
+
+                if let stdinData = stdinData {
+                    do {
+                        try stdinPipe.fileHandleForWriting.write(contentsOf: stdinData)
+                    } catch {
+                        try? stdinPipe.fileHandleForWriting.close()
+                        if process.isRunning {
+                            process.terminate()
+                        }
+                    }
+                    try? stdinPipe.fileHandleForWriting.close()
+                }
             } catch {
                 timeoutTask.cancel()
+                if stdinData != nil {
+                    try? stdinPipe.fileHandleForWriting.close()
+                }
                 continuation.resume(returning: RemoteSSHResult(
                     command: command,
                     exitCode: -1,

@@ -528,6 +528,83 @@ final class HermesCompanionTests: XCTestCase {
             "Remote chat is not enabled yet. Solaris needs a verified safe prompt transport before sending prompts to Hermes."
         )
     }
+
+    // MARK: - Batch 2D Stdin Executor Tests
+    
+    func testRemoteSSHExecutorWithoutStdin() async {
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_no_stdin.sh")
+        let scriptContent = """
+        #!/bin/sh
+        echo "args: $@"
+        exit 0
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let executor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        let settings = RemoteHostSettings(host: "test-host", username: "test-user")
+        let result = await executor.execute(command: .whichHermes, settings: settings)
+        
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertFalse(result.timedOut)
+        XCTAssertTrue(result.stdout.contains("args:"))
+        XCTAssertTrue(result.stdout.contains("which hermes"))
+    }
+    
+    func testRemoteSSHExecutorWithStdin() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_stdin.sh")
+        let scriptContent = """
+        #!/bin/sh
+        cat -
+        exit 0
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let executor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        let settings = RemoteHostSettings(host: "test-host", username: "test-user")
+        let testInput = "hello remote hermes stdin"
+        let stdinData = testInput.data(using: .utf8)
+        
+        let result = await executor.execute(command: .whichHermes, settings: settings, stdinData: stdinData)
+        
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertFalse(result.timedOut)
+        XCTAssertEqual(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines), testInput)
+    }
+    
+    func testRemoteSSHExecutorOversizedStdinRejected() async {
+        let executor = RemoteSSHExecutor()
+        let settings = RemoteHostSettings(host: "test-host", username: "test-user")
+        let oversizedData = Data(repeating: 65, count: 16385) // 16KB + 1 byte
+        
+        let result = await executor.execute(command: .whichHermes, settings: settings, stdinData: oversizedData)
+        
+        XCTAssertEqual(result.exitCode, -1)
+        XCTAssertFalse(result.timedOut)
+        XCTAssertEqual(result.duration, 0)
+        XCTAssertTrue(result.stderr.contains("payload exceeds maximum allowed size of 16KB"))
+    }
 }
 
 
