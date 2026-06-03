@@ -1659,6 +1659,184 @@ final class HermesCompanionTests: XCTestCase {
         // Verification that highlightCode runs without crashing (and keywords are processed)
         XCTAssertNotNil(highlighted)
     }
+
+    func testSessionRenameUpdatesTitle() {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let sessionID = UUID()
+        let session = HermesChatSession(id: sessionID, title: "Original Title")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
+        vm.activeSessionID = sessionID
+        
+        vm.renameSession(id: sessionID, title: "New Title")
+        XCTAssertEqual(vm.sessions.first(where: { $0.id == sessionID })?.title, "New Title")
+        XCTAssertEqual(vm.sessions.first(where: { $0.id == sessionID })?.isManuallyRenamed, true)
+    }
+    
+    func testSessionRenameSanitisesSecretsAndPaths() {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let sessionID = UUID()
+        let session = HermesChatSession(id: sessionID, title: "Original Title")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
+        vm.activeSessionID = sessionID
+        
+        let token = "my-secret-val"
+        vm.renameSession(id: sessionID, title: "/Users/testuser/project token: \(token)")
+        
+        let updatedTitle = vm.sessions.first(where: { $0.id == sessionID })?.title ?? ""
+        XCTAssertTrue(updatedTitle.contains("~"))
+        XCTAssertFalse(updatedTitle.contains("testuser"))
+        XCTAssertTrue(updatedTitle.contains("REDACTED"))
+        XCTAssertFalse(updatedTitle.contains(token))
+    }
+    
+    func testSessionRenameCapsTitle() {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let sessionID = UUID()
+        let session = HermesChatSession(id: sessionID, title: "Original Title")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
+        vm.activeSessionID = sessionID
+        
+        let longTitle = String(repeating: "a", count: 50)
+        vm.renameSession(id: sessionID, title: longTitle)
+        
+        let updatedTitle = vm.sessions.first(where: { $0.id == sessionID })?.title ?? ""
+        XCTAssertEqual(updatedTitle.count, 43)
+        XCTAssertTrue(updatedTitle.hasSuffix("..."))
+    }
+    
+    func testSessionRenameRejectsEmpty() {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let sessionID = UUID()
+        let session = HermesChatSession(id: sessionID, title: "Original Title")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
+        vm.activeSessionID = sessionID
+        
+        vm.renameSession(id: sessionID, title: "   ")
+        XCTAssertEqual(vm.sessions.first(where: { $0.id == sessionID })?.title, "New Chat")
+    }
+    
+    func testManuallyRenamedSessionNotOverwritten() async {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let sessionID = UUID()
+        let session = HermesChatSession(id: sessionID, title: "Original Title")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
+        vm.activeSessionID = sessionID
+        
+        vm.renameSession(id: sessionID, title: "User Title")
+        
+        vm.currentInput = "/chat test prompt"
+        await vm.sendCommand()
+        
+        var retries = 0
+        while vm.chatState.isActive && retries < 40 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            retries += 1
+        }
+        
+        XCTAssertEqual(vm.sessions.first(where: { $0.id == sessionID })?.title, "User Title")
+    }
+    
+    func testDeleteSessionRemovesIt() {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let id1 = UUID()
+        let id2 = UUID()
+        let session1 = HermesChatSession(id: id1, title: "Session 1")
+        let session2 = HermesChatSession(id: id2, title: "Session 2")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session1, session2])
+        vm.activeSessionID = id1
+        
+        vm.deleteSession(id: id2)
+        XCTAssertEqual(vm.sessions.count, 1)
+        XCTAssertEqual(vm.sessions[0].id, id1)
+    }
+    
+    func testDeleteActiveSessionSelectsFallback() {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let id1 = UUID()
+        let id2 = UUID()
+        let session1 = HermesChatSession(id: id1, createdAt: Date().addingTimeInterval(-10), updatedAt: Date().addingTimeInterval(-10), title: "Session 1")
+        let session2 = HermesChatSession(id: id2, createdAt: Date(), updatedAt: Date(), title: "Session 2")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session1, session2])
+        vm.activeSessionID = id2
+        
+        vm.deleteSession(id: id2)
+        XCTAssertEqual(vm.activeSessionID, id1)
+    }
+    
+    func testDeleteOnlySessionCreatesDefault() {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let id1 = UUID()
+        let session1 = HermesChatSession(id: id1, title: "Session 1")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session1])
+        vm.activeSessionID = id1
+        
+        vm.deleteSession(id: id1)
+        XCTAssertEqual(vm.sessions.count, 1)
+        XCTAssertEqual(vm.sessions[0].title, "New Chat")
+        XCTAssertNotNil(vm.activeSessionID)
+    }
+    
+    func testActiveStreamBlocksDeleteAndClearAll() {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let sessionID = UUID()
+        let session = HermesChatSession(id: sessionID, title: "Session 1")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
+        vm.activeSessionID = sessionID
+        
+        vm.chatState = .streaming
+        
+        vm.deleteSession(id: sessionID)
+        XCTAssertEqual(vm.sessions.count, 1)
+        XCTAssertNotNil(vm.errorMessage)
+        
+        vm.errorMessage = nil
+        vm.clearChatHistory()
+        XCTAssertEqual(vm.sessions.count, 1)
+        XCTAssertNotNil(vm.errorMessage)
+    }
+    
+    func testClearAllResetsToEmptyHistory() {
+        let store = ChatHistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        let id1 = UUID()
+        let session1 = HermesChatSession(id: id1, title: "Session 1")
+        vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session1])
+        vm.activeSessionID = id1
+        
+        vm.clearChatHistory()
+        XCTAssertEqual(vm.sessions.count, 1)
+        XCTAssertEqual(vm.sessions[0].title, "New Chat")
+        XCTAssertNotEqual(vm.activeSessionID, id1)
+    }
 }
 
 

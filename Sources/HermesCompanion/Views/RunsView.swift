@@ -4,6 +4,16 @@ public struct RunsView: View {
     @ObservedObject var viewModel: HermesViewModel
     @State private var query: String = ""
     
+    // Lifecycle action states
+    @State private var showingRenameAlert = false
+    @State private var renameText = ""
+    @State private var renamingSessionID: UUID? = nil
+    
+    @State private var showingDeleteAlert = false
+    @State private var deletingSessionID: UUID? = nil
+    
+    @State private var showingClearAllAlert = false
+    
     public init(viewModel: HermesViewModel) {
         self.viewModel = viewModel
     }
@@ -12,13 +22,30 @@ public struct RunsView: View {
         HStack(spacing: 0) {
             // Left pane: Session list
             VStack(alignment: .leading, spacing: 0) {
-                // Header with "New Chat"
-                HStack {
+                // Header with "New Chat" and "Clear All"
+                HStack(spacing: 8) {
                     Text("Chat History")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
                     
                     Spacer()
+                    
+                    Button(action: {
+                        if viewModel.chatState.isActive {
+                            viewModel.errorMessage = "Finish or cancel the active chat before managing sessions."
+                        } else {
+                            showingClearAllAlert = true
+                        }
+                    }) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14))
+                            .foregroundColor(.white.opacity(0.7))
+                            .padding(6)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear All History")
                     
                     Button(action: {
                         viewModel.createNewSession()
@@ -53,8 +80,49 @@ public struct RunsView: View {
                                     isActive: viewModel.activeSessionID == session.id,
                                     onSelect: {
                                         viewModel.selectSession(id: session.id)
+                                    },
+                                    onRename: {
+                                        if viewModel.chatState.isActive {
+                                            viewModel.errorMessage = "Finish or cancel the active chat before managing sessions."
+                                        } else {
+                                            renameText = session.title
+                                            renamingSessionID = session.id
+                                            showingRenameAlert = true
+                                        }
+                                    },
+                                    onDelete: {
+                                        if viewModel.chatState.isActive {
+                                            viewModel.errorMessage = "Finish or cancel the active chat before managing sessions."
+                                        } else {
+                                            deletingSessionID = session.id
+                                            showingDeleteAlert = true
+                                        }
                                     }
                                 )
+                                .contextMenu {
+                                    Button(action: {
+                                        if viewModel.chatState.isActive {
+                                            viewModel.errorMessage = "Finish or cancel the active chat before managing sessions."
+                                        } else {
+                                            renameText = session.title
+                                            renamingSessionID = session.id
+                                            showingRenameAlert = true
+                                        }
+                                    }) {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+                                    
+                                    Button(action: {
+                                        if viewModel.chatState.isActive {
+                                            viewModel.errorMessage = "Finish or cancel the active chat before managing sessions."
+                                        } else {
+                                            deletingSessionID = session.id
+                                            showingDeleteAlert = true
+                                        }
+                                    }) {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                     }
@@ -132,6 +200,37 @@ public struct RunsView: View {
             .background(Color.clear)
         }
         .background(Color.clear)
+        .alert("Rename Session", isPresented: $showingRenameAlert) {
+            TextField("Session Title", text: $renameText)
+            Button("Rename") {
+                if let id = renamingSessionID {
+                    viewModel.renameSession(id: id, title: renameText)
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                renamingSessionID = nil
+            }
+        }
+        .alert("Delete Session", isPresented: $showingDeleteAlert) {
+            Button("Delete", role: .destructive) {
+                if let id = deletingSessionID {
+                    viewModel.deleteSession(id: id)
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                deletingSessionID = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete this chat session? This action cannot be undone.")
+        }
+        .alert("Clear Chat History", isPresented: $showingClearAllAlert) {
+            Button("Clear All", role: .destructive) {
+                viewModel.clearChatHistory()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Clear all local chat history? This removes saved Solaris chat sessions from this Mac only. It does not affect Hermes, SSH settings, or remote data.")
+        }
     }
 }
 
@@ -139,45 +238,66 @@ struct SessionRow: View {
     let session: HermesChatSession
     let isActive: Bool
     let onSelect: () -> Void
+    let onRename: () -> Void
+    let onDelete: () -> Void
     
     var body: some View {
-        Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(session.title)
-                        .font(.system(size: 13, weight: isActive ? .bold : .medium))
-                        .foregroundColor(isActive ? .white : .white.opacity(0.85))
-                        .lineLimit(1)
-                    Spacer()
-                    Text("\(session.runs.count)")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.5))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(6)
-                }
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(session.title)
+                    .font(.system(size: 13, weight: isActive ? .bold : .medium))
+                    .foregroundColor(isActive ? .white : .white.opacity(0.85))
+                    .lineLimit(1)
+                Spacer()
                 
-                if let lastRun = session.runs.last, let preview = lastRun.promptPreview {
-                    Text(preview)
+                Text("\(session.runs.count)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(6)
+                
+                Menu {
+                    Button(action: onRename) {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    Button(action: onDelete) {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
                         .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.5))
-                        .lineLimit(1)
+                        .foregroundColor(.white.opacity(0.4))
+                        .padding(4)
                 }
-                
-                Text(session.updatedAt, format: .dateTime.month().day().hour().minute())
-                    .font(.system(size: 9))
-                    .foregroundColor(.white.opacity(0.35))
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .frame(width: 16)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isActive ? Color.white.opacity(0.08) : Color.clear)
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isActive ? Color.hermesPurple.opacity(0.4) : Color.clear, lineWidth: 1)
-            )
+            
+            if let lastRun = session.runs.last, let preview = lastRun.promptPreview {
+                Text(preview)
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.5))
+                    .lineLimit(1)
+            }
+            
+            Text(session.updatedAt, format: .dateTime.month().day().hour().minute())
+                .font(.system(size: 9))
+                .foregroundColor(.white.opacity(0.35))
         }
-        .buttonStyle(.plain)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isActive ? Color.white.opacity(0.08) : Color.clear)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isActive ? Color.hermesPurple.opacity(0.4) : Color.clear, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
+        }
     }
 }

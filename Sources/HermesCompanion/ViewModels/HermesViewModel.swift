@@ -1097,6 +1097,81 @@ public class HermesViewModel: ObservableObject {
         mergePersistedRunsIntoUI()
     }
 
+    public func renameSession(id: UUID, title: String) {
+        if chatState.isActive {
+            errorMessage = "Finish or cancel the active chat before managing sessions."
+            return
+        }
+        guard let index = chatHistory.sessions.firstIndex(where: { $0.id == id }) else { return }
+        
+        let sanitised = sanitiseTitle(title)
+        chatHistory.sessions[index].title = sanitised
+        chatHistory.sessions[index].isManuallyRenamed = true
+        chatHistory.sessions[index].updatedAt = Date()
+        
+        Task {
+            try? await historyStore.save(chatHistory)
+        }
+    }
+    
+    public func deleteSession(id: UUID) {
+        if chatState.isActive {
+            errorMessage = "Finish or cancel the active chat before managing sessions."
+            return
+        }
+        guard let index = chatHistory.sessions.firstIndex(where: { $0.id == id }) else { return }
+        
+        chatHistory.sessions.remove(at: index)
+        
+        if chatHistory.sessions.isEmpty {
+            let newSession = HermesChatSession(title: "New Chat")
+            chatHistory.sessions.append(newSession)
+            activeSessionID = newSession.id
+        } else if activeSessionID == id {
+            let sortedRemaining = chatHistory.sessions.sorted(by: { $0.updatedAt > $1.updatedAt })
+            activeSessionID = sortedRemaining.first?.id
+        }
+        
+        mergePersistedRunsIntoUI()
+        
+        Task {
+            try? await historyStore.save(chatHistory)
+        }
+    }
+    
+    public func clearChatHistory() {
+        if chatState.isActive {
+            errorMessage = "Finish or cancel the active chat before managing sessions."
+            return
+        }
+        
+        let defaultSession = HermesChatSession(title: "New Chat")
+        self.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [defaultSession])
+        self.activeSessionID = defaultSession.id
+        
+        self.runs = self.fetchedServiceRuns
+        
+        Task {
+            try? await historyStore.save(self.chatHistory)
+        }
+    }
+    
+    public func sanitiseTitle(_ title: String) -> String {
+        var clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty {
+            return "New Chat"
+        }
+        
+        clean = clean.components(separatedBy: .controlCharacters).joined()
+        clean = DiagnosticsRedactor.redact(clean)
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if clean.count > 40 {
+            return String(clean.prefix(40)) + "..."
+        }
+        return clean.isEmpty ? "New Chat" : clean
+    }
+
     private func mergePersistedRunsIntoUI() {
         guard let sessionID = activeSessionID,
               let session = chatHistory.sessions.first(where: { $0.id == sessionID }) else {
@@ -1136,9 +1211,10 @@ public class HermesViewModel: ObservableObject {
                 chatHistory.sessions[sessionIndex].runs.append(persistedRun)
             }
             
-            // Derive title if it's currently "New Chat" or empty/default
+            // Derive title if it's currently "New Chat" or empty/default and not manually renamed
+            let isManual = chatHistory.sessions[sessionIndex].isManuallyRenamed ?? false
             let currentTitle = chatHistory.sessions[sessionIndex].title
-            if currentTitle == "New Chat" || currentTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if !isManual && (currentTitle == "New Chat" || currentTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
                 if let preview = persistedRun.promptPreview {
                     chatHistory.sessions[sessionIndex].title = cleanAndCapTitle(preview)
                 } else {
@@ -1169,6 +1245,8 @@ public class HermesViewModel: ObservableObject {
         clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
         
         clean = clean.components(separatedBy: .controlCharacters).joined()
+        clean = DiagnosticsRedactor.redact(clean)
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
         
         if clean.count > 40 {
             return String(clean.prefix(40)) + "..."
