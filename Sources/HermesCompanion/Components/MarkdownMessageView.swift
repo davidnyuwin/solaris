@@ -309,12 +309,14 @@ public func parseMarkdown(_ input: String) -> [MarkdownBlock] {
 
 private func sanitiseLanguageLabel(_ lang: String) -> String? {
     let allowedChars = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+-#_-"))
-    let clean = lang.unicodeScalars.filter { allowedChars.contains($0) }.map { String($0) }.joined()
-    
+    guard lang.unicodeScalars.allSatisfy({ allowedChars.contains($0) }) else {
+        return nil
+    }
+    let clean = lang.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if clean.isEmpty || clean.count > 24 {
         return nil
     }
-    return clean.lowercased()
+    return clean
 }
 
 // MARK: - Inline Parser
