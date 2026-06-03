@@ -1,9 +1,10 @@
 import SwiftUI
+import AppKit
 
 public enum MarkdownBlock: Hashable {
     case heading(level: Int, text: String)
     case paragraph(text: String)
-    case codeBlock(code: String)
+    case codeBlock(language: String?, code: String)
     case bulletList(items: [String])
     case numberedList(items: [String])
     case blockquote(text: String)
@@ -50,15 +51,30 @@ public struct MarkdownMessageView: View {
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: false)
                 
-        case .codeBlock(let code):
-            ScrollView(.horizontal, showsIndicators: true) {
-                Text(code)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(.hermesTeal)
-                    .padding(8)
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        case .codeBlock(let language, let code):
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    Text(language ?? "code")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.5))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                    
+                    Spacer()
+                    
+                    CopyButton(textToCopy: code, buttonLabel: "Copy")
+                        .padding(.trailing, 6)
+                }
+                .background(Color.white.opacity(0.04))
+                
+                ScrollView(.horizontal, showsIndicators: true) {
+                    highlightCode(code, language: language)
+                        .font(.system(size: 11, design: .monospaced))
+                        .padding(8)
+                        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                }
+                .background(Color.black.opacity(0.3))
             }
-            .background(Color.black.opacity(0.3))
             .cornerRadius(6)
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
@@ -121,6 +137,44 @@ public struct MarkdownMessageView: View {
     }
 }
 
+// MARK: - Safe Copy Button
+
+public struct CopyButton: View {
+    let textToCopy: String
+    let buttonLabel: String
+    @State private var isCopied = false
+    
+    public init(textToCopy: String, buttonLabel: String) {
+        self.textToCopy = textToCopy
+        self.buttonLabel = buttonLabel
+    }
+    
+    public var body: some View {
+        Button(action: {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(textToCopy, forType: .string)
+            isCopied = true
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                isCopied = false
+            }
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                Text(isCopied ? "Copied" : buttonLabel)
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(isCopied ? .emerald : .white.opacity(0.6))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Markdown Block Parser
 
 public func parseMarkdown(_ input: String) -> [MarkdownBlock] {
@@ -130,6 +184,17 @@ public func parseMarkdown(_ input: String) -> [MarkdownBlock] {
     
     var inCodeBlock = false
     var codeBlockContent = ""
+    var activeLanguage: String? = nil
+    
+    func flushAccumulated() {
+        if !currentLines.isEmpty {
+            let paragraphText = currentLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !paragraphText.isEmpty {
+                blocks.append(.paragraph(text: paragraphText))
+            }
+            currentLines = []
+        }
+    }
     
     var inBulletList = false
     var bulletItems: [String] = []
@@ -137,7 +202,7 @@ public func parseMarkdown(_ input: String) -> [MarkdownBlock] {
     var inNumberedList = false
     var numberedItems: [String] = []
     
-    func flushAccumulated() {
+    func flushLists() {
         if inBulletList {
             if !bulletItems.isEmpty {
                 blocks.append(.bulletList(items: bulletItems))
@@ -152,24 +217,22 @@ public func parseMarkdown(_ input: String) -> [MarkdownBlock] {
             numberedItems = []
             inNumberedList = false
         }
-        if !currentLines.isEmpty {
-            let paragraphText = currentLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !paragraphText.isEmpty {
-                blocks.append(.paragraph(text: paragraphText))
-            }
-            currentLines = []
-        }
     }
     
     for line in lines {
         // Handle code blocks
         if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
             if inCodeBlock {
-                blocks.append(.codeBlock(code: codeBlockContent.trimmingCharacters(in: .newlines)))
+                blocks.append(.codeBlock(language: activeLanguage, code: codeBlockContent.trimmingCharacters(in: .newlines)))
                 codeBlockContent = ""
+                activeLanguage = nil
                 inCodeBlock = false
             } else {
+                flushLists()
                 flushAccumulated()
+                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+                let lang = String(trimmedLine.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+                activeLanguage = lang.isEmpty ? nil : sanitiseLanguageLabel(lang)
                 inCodeBlock = true
             }
             continue
@@ -184,6 +247,7 @@ public func parseMarkdown(_ input: String) -> [MarkdownBlock] {
         
         // Handle Headings
         if trimmed.hasPrefix("#") {
+            flushLists()
             flushAccumulated()
             let parts = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
             if !parts.isEmpty, parts[0].allSatisfy({ $0 == "#" }) {
@@ -196,6 +260,7 @@ public func parseMarkdown(_ input: String) -> [MarkdownBlock] {
         
         // Handle Blockquotes
         if trimmed.hasPrefix(">") {
+            flushLists()
             flushAccumulated()
             let text = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
             blocks.append(.blockquote(text: text))
@@ -230,14 +295,26 @@ public func parseMarkdown(_ input: String) -> [MarkdownBlock] {
         
         // Regular line
         if trimmed.isEmpty {
+            flushLists()
             flushAccumulated()
         } else {
             currentLines.append(line)
         }
     }
     
+    flushLists()
     flushAccumulated()
     return blocks
+}
+
+private func sanitiseLanguageLabel(_ lang: String) -> String? {
+    let allowedChars = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+-#_-"))
+    let clean = lang.unicodeScalars.filter { allowedChars.contains($0) }.map { String($0) }.joined()
+    
+    if clean.isEmpty || clean.count > 24 {
+        return nil
+    }
+    return clean.lowercased()
 }
 
 // MARK: - Inline Parser
@@ -308,4 +385,68 @@ public func parseInlineText(_ input: String) -> Text {
     }
     
     return resultText
+}
+
+// MARK: - Safe Copy Normaliser
+
+public func cleanForCopy(_ text: String) -> String {
+    // 1. Strip images and links (replaces ![alt](url) -> [image omitted], and [anchor](url) -> anchor)
+    var clean = prepareSafeInlineString(text)
+    
+    // 2. Remove fenced code markers (like ```swift)
+    let lines = clean.components(separatedBy: .newlines)
+    var resultLines: [String] = []
+    for line in lines {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("```") {
+            continue
+        }
+        resultLines.append(line)
+    }
+    clean = resultLines.joined(separator: "\n")
+    
+    return clean
+}
+
+// MARK: - Lightweight Syntax Highlighting
+
+public func highlightCode(_ code: String, language: String?) -> Text {
+    guard let lang = language?.lowercased(), lang == "swift" || lang == "shell" || lang == "sh" || lang == "bash" else {
+        return Text(code).foregroundColor(.hermesTeal)
+    }
+    
+    let swiftKeywords: Set<String> = [
+        "let", "var", "func", "import", "class", "struct", "enum", "if", "else", 
+        "return", "try", "await", "async", "guard", "nil", "true", "false"
+    ]
+    
+    let shellKeywords: Set<String> = [
+        "echo", "exit", "if", "then", "else", "fi", "for", "in", "do", 
+        "done", "sudo", "ssh", "hermes", "git", "cd", "mkdir", "rm"
+    ]
+    
+    let keywords = lang == "swift" ? swiftKeywords : shellKeywords
+    let keywordColor = lang == "swift" ? Color.hermesPurple : Color.amber
+    
+    var result = Text("")
+    
+    let wordBoundary = CharacterSet.alphanumerics.inverted
+    let scanner = Scanner(string: code)
+    scanner.charactersToBeSkipped = nil
+    
+    while !scanner.isAtEnd {
+        if let word = scanner.scanCharacters(from: .alphanumerics) {
+            if keywords.contains(word) {
+                result = result + Text(word).foregroundColor(keywordColor).bold()
+            } else {
+                result = result + Text(word).foregroundColor(.hermesTeal)
+            }
+        }
+        
+        if let separators = scanner.scanCharacters(from: wordBoundary) {
+            result = result + Text(separators).foregroundColor(.hermesTeal)
+        }
+    }
+    
+    return result
 }

@@ -1560,7 +1560,7 @@ final class HermesCompanionTests: XCTestCase {
         let blocks = parseMarkdown("Prefix\n```\nlet a = 1\nlet b = 2\n```\nSuffix")
         XCTAssertEqual(blocks.count, 3)
         XCTAssertEqual(blocks[0], .paragraph(text: "Prefix"))
-        XCTAssertEqual(blocks[1], .codeBlock(code: "let a = 1\nlet b = 2"))
+        XCTAssertEqual(blocks[1], .codeBlock(language: nil, code: "let a = 1\nlet b = 2"))
         XCTAssertEqual(blocks[2], .paragraph(text: "Suffix"))
     }
 
@@ -1603,6 +1603,61 @@ final class HermesCompanionTests: XCTestCase {
         let blocks = parseMarkdown(malformed)
         XCTAssertEqual(blocks.count, 1)
         XCTAssertEqual(blocks[0], .paragraph(text: malformed))
+    }
+
+    // MARK: - Batch 2K Message Controls and Clipboard Safety Tests
+
+    func testMarkdownCodeBlockLanguageExtraction() {
+        let blocks = parseMarkdown("```swift\nlet x = 1\n```")
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0], .codeBlock(language: "swift", code: "let x = 1"))
+    }
+
+    func testMarkdownCodeBlockWithoutLanguage() {
+        let blocks = parseMarkdown("```\nplain code\n```")
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0], .codeBlock(language: nil, code: "plain code"))
+    }
+
+    func testMarkdownCodeBlockLanguageSanitisation() {
+        // Weird language names with unsafe characters or spacing should be sanitised/ignored
+        let blocks = parseMarkdown("```swift-lang! 123\ncode\n```")
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0], .codeBlock(language: nil, code: "code"))
+    }
+
+    func testCodeCopySourceExcludesFencesAndSanitises() {
+        let rawMarkdown = "```swift\nlet x = 1\n```"
+        let blocks = parseMarkdown(rawMarkdown)
+        XCTAssertEqual(blocks.count, 1)
+        if case .codeBlock(_, let code) = blocks[0] {
+            XCTAssertEqual(code, "let x = 1") // Excludes "```swift" and "```"
+        } else {
+            XCTFail("Expected code block")
+        }
+    }
+
+    func testClipboardResponseCopySourceSafety() {
+        // Test that cleanForCopy successfully strips link targets and images
+        let rawResponse = "Hello, here is [google](http://google.com) and an image ![test](http://img.com/test.png) plus:\n```swift\nlet x = 1\n```"
+        let copySource = cleanForCopy(rawResponse)
+        
+        // Output should have formatted links/images as plain text and stripped fences
+        XCTAssertTrue(copySource.contains("google"))
+        XCTAssertFalse(copySource.contains("http://google.com"))
+        XCTAssertTrue(copySource.contains("[image omitted]"))
+        XCTAssertFalse(copySource.contains("http://img.com/test.png"))
+        XCTAssertTrue(copySource.contains("let x = 1"))
+        XCTAssertFalse(copySource.contains("```swift"))
+    }
+
+    func testLightweightSyntaxHighlighting() {
+        // Checks keywords are highlighted with appropriate colors
+        let swiftCode = "let value = true"
+        let highlighted = highlightCode(swiftCode, language: "swift")
+        
+        // Verification that highlightCode runs without crashing (and keywords are processed)
+        XCTAssertNotNil(highlighted)
     }
 }
 

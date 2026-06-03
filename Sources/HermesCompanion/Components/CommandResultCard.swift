@@ -21,6 +21,10 @@ public struct CommandResultCard: View {
                     Text(run.prompt.isEmpty ? "Prompt not saved" : run.prompt)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.white)
+                    
+                    if !run.prompt.isEmpty {
+                        CopyButton(textToCopy: cleanForCopy(run.prompt), buttonLabel: "Copy")
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -52,6 +56,10 @@ public struct CommandResultCard: View {
                             Text("\(run.durationMs)ms")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.4))
+                        }
+                        
+                        if !run.response.isEmpty {
+                            CopyButton(textToCopy: cleanForCopy(run.response), buttonLabel: "Copy Response")
                         }
                         
                         statusBadge
