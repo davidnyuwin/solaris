@@ -1253,7 +1253,7 @@ final class HermesCompanionTests: XCTestCase {
         // Setup input containing bearer secrets and absolute /Users/ paths to be capped
         let longPromptPart = String(repeating: "A", count: 150)
         let bearerToken = "bearer " + "abc123def456ghi789"
-        let rawInput = "/chat \(longPromptPart) and secret: \(bearerToken) and path: /Users/sysadmin/project"
+        let rawInput = "/chat secret: \(bearerToken) and path: /Users/sysadmin/project and long: \(longPromptPart)"
         
         viewModel.currentInput = rawInput
         await viewModel.sendCommand()
