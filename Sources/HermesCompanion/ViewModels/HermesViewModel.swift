@@ -1245,8 +1245,6 @@ public class HermesViewModel: ObservableObject {
         clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
         
         clean = clean.components(separatedBy: .controlCharacters).joined()
-        clean = DiagnosticsRedactor.redact(clean)
-        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
         
         if clean.count > 40 {
             return String(clean.prefix(40)) + "..."
