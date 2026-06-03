@@ -69,6 +69,16 @@ final class RemoteTunnelTests: XCTestCase {
         let request = RemoteTunnelRequest(localPort: 9119, remoteHost: "127.0.0.1", remotePort: 9119, purpose: .runtimeAccess)
         
         // 1. Unconnected state: starting a tunnel should be blocked (fails safety gate)
+        vm.remoteHostStatus = RemoteHermesStatusSnapshot(
+            hostLabel: settings.displayLabel,
+            hermesFound: false,
+            hermesVersion: nil,
+            statusSummary: nil,
+            lastCheckedAt: Date(),
+            errorMessage: nil,
+            connectionState: .notConfigured,
+            tunnelState: .notStarted
+        )
         await vm.startRemoteTunnel(settings: settings, request: request)
         XCTAssertEqual(vm.remoteHostStatus.tunnelState, .notStarted) // Preserved
         
@@ -200,27 +210,33 @@ final class RemoteTunnelTests: XCTestCase {
         await vm.testRemoteConnection(settings: settings)
         XCTAssertEqual(vm.remoteHostStatus.connectionState, .heartbeatFailed)
         XCTAssertEqual(vm.remoteHostStatus.robustnessState, .retryAvailable)
+        XCTAssertEqual(vm.retryCount, 0)
+        
+        // 2. First retry
+        await vm.retryRemoteConnection(settings: settings)
+        XCTAssertEqual(vm.remoteHostStatus.connectionState, .heartbeatFailed)
+        XCTAssertEqual(vm.remoteHostStatus.robustnessState, .retryAvailable)
         XCTAssertEqual(vm.retryCount, 1)
         
-        // 2. Second retry
+        // 3. Second retry
         await vm.retryRemoteConnection(settings: settings)
         XCTAssertEqual(vm.remoteHostStatus.connectionState, .heartbeatFailed)
         XCTAssertEqual(vm.remoteHostStatus.robustnessState, .retryAvailable)
         XCTAssertEqual(vm.retryCount, 2)
         
-        // 3. Third retry (exhausts retries)
+        // 4. Third retry (exhausts retries)
         await vm.retryRemoteConnection(settings: settings)
         XCTAssertEqual(vm.remoteHostStatus.connectionState, .heartbeatFailed)
         XCTAssertEqual(vm.remoteHostStatus.robustnessState, .retryExhausted)
         XCTAssertEqual(vm.retryCount, 3)
         
-        // 4. Fourth attempt blocked/exhausted
+        // 5. Fourth attempt blocked/exhausted
         await vm.retryRemoteConnection(settings: settings)
         XCTAssertEqual(vm.remoteHostStatus.robustnessState, .retryExhausted)
         XCTAssertEqual(vm.remoteHostStatus.errorMessage, "Maximum retry attempts exhausted.")
         XCTAssertEqual(vm.retryCount, 3)
         
-        // 5. Successful retry resets counter
+        // 6. Successful retry resets counter
         let successSettings = RemoteHostSettings(host: "success.local")
         // Prime to failed first
         vm.remoteHostStatus = RemoteHermesStatusSnapshot(
