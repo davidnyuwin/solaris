@@ -1545,6 +1545,65 @@ final class HermesCompanionTests: XCTestCase {
         let expectedTitle = "config for ~/test with token Bearer [RED..."
         XCTAssertEqual(viewModel.activeSession?.title, expectedTitle)
     }
+
+    // MARK: - Batch 2J Markdown Safety Tests
+
+    func testMarkdownBlockParserHeading() {
+        let blocks = parseMarkdown("# Heading 1\n## Heading 2\nRegular text")
+        XCTAssertEqual(blocks.count, 3)
+        XCTAssertEqual(blocks[0], .heading(level: 1, text: "Heading 1"))
+        XCTAssertEqual(blocks[1], .heading(level: 2, text: "Heading 2"))
+        XCTAssertEqual(blocks[2], .paragraph(text: "Regular text"))
+    }
+
+    func testMarkdownBlockParserCodeBlock() {
+        let blocks = parseMarkdown("Prefix\n```\nlet a = 1\nlet b = 2\n```\nSuffix")
+        XCTAssertEqual(blocks.count, 3)
+        XCTAssertEqual(blocks[0], .paragraph(text: "Prefix"))
+        XCTAssertEqual(blocks[1], .codeBlock(code: "let a = 1\nlet b = 2"))
+        XCTAssertEqual(blocks[2], .paragraph(text: "Suffix"))
+    }
+
+    func testMarkdownBlockParserLists() {
+        let bulletBlocks = parseMarkdown("* item A\n- item B")
+        XCTAssertEqual(bulletBlocks.count, 1)
+        XCTAssertEqual(bulletBlocks[0], .bulletList(items: ["item A", "item B"]))
+
+        let numberedBlocks = parseMarkdown("1. first item\n2. second item")
+        XCTAssertEqual(numberedBlocks.count, 1)
+        XCTAssertEqual(numberedBlocks[0], .numberedList(items: ["first item", "second item"]))
+    }
+
+    func testMarkdownBlockParserBlockquote() {
+        let blocks = parseMarkdown("> quote text")
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0], .blockquote(text: "quote text"))
+    }
+
+    func testMarkdownInlineParserSafety() {
+        // Raw HTML is preserved as plain text (escaped/displayed literally)
+        let htmlInput = "<script>alert('evil')</script>"
+        let parsedHtml = prepareSafeInlineString(htmlInput)
+        XCTAssertEqual(parsedHtml, htmlInput) // Displayed literally as text
+
+        // Markdown image syntax does not load remote images
+        let imgInput = "Here is an image: ![attack](http://evil.com/malware.png) and another one"
+        let parsedImg = prepareSafeInlineString(imgInput)
+        XCTAssertEqual(parsedImg, "Here is an image: [image omitted] and another one")
+
+        // Unsafe markdown links do not auto-open and are formatted as text
+        let linkInput = "Check [google](http://google.com) search"
+        let parsedLink = prepareSafeInlineString(linkInput)
+        XCTAssertEqual(parsedLink, "Check google search")
+    }
+
+    func testMarkdownMalformedFallback() {
+        // Malformed markdown block parses as plain paragraph or text blocks safely
+        let malformed = "Some unmatched *italic and **bold"
+        let blocks = parseMarkdown(malformed)
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0], .paragraph(text: malformed))
+    }
 }
 
 
