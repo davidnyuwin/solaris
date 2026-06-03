@@ -26,6 +26,11 @@ public class HermesViewModel: ObservableObject {
     
     @Published public var apiEndpoint: String = "http://127.0.0.1:9119"
     
+    // Batch 2G Chat UX / Stream State Hardening
+    @Published public var chatState: ChatExecutionState = .idle
+    private var activeChatTask: Task<Void, Never>? = nil
+    private var activeChatRunID: String? = nil
+    
     // Batch 1 Diagnostics controls
     @Published public var isRefreshingDiagnostics: Bool = false
     @Published public var lastDiagnosticsRefreshAt: Date?
@@ -185,8 +190,19 @@ public class HermesViewModel: ObservableObject {
         guard !command.isEmpty else { return }
         
         currentInput = ""
-        isPendingResponse = true
         errorMessage = nil
+        
+        // Handle cancel command typed in console
+        if command.lowercased() == "/cancel" {
+            if chatState == .connecting || chatState == .streaming {
+                cancelActiveChat()
+            } else {
+                errorMessage = "No active remote chat stream to cancel."
+            }
+            return
+        }
+        
+        isPendingResponse = true
         
         // Simulating immediate transition of visual state orb
         if let currentStatus = status {
@@ -200,55 +216,173 @@ public class HermesViewModel: ObservableObject {
         
         // Check if command is a chat prompt query
         if command.lowercased().hasPrefix("/chat") {
-            let prompt = command.hasPrefix("/chat ")
-                ? String(command.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
-                : ""
-            
-            let currentMode = UserDefaults.standard.string(forKey: "HermesServiceMode") ?? "mock"
-            if currentMode == "mock" {
-                // Mock execution flow
-                let mockOpenAIKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
-                let rawMockResponse = """
-                Hello! This is a mock chat response for your prompt: "\(prompt)".
-                \u{001B}[31mThis text had ANSI colors\u{001B}[0m and a hidden link \u{001B}]8;;http://malicious.url\u{0007}Click Here\u{001B}]8;;\u{0007}.
-                System user directory: /Users/sysadmin/hermes-agent
-                Secret OpenAI key: \(mockOpenAIKey)
-                API_SECRET = 'my-super-secret-credentials'
-                Commit hash 8220c964ecedcc55ffceb7ce4aaeba5f038cc25c.
-                """
-
-                // Pass mock response through OutputSanitiser
-                let sanitisedResult = OutputSanitiser.sanitise(rawMockResponse)
-                
-                // Simulate network latency delay (800ms)
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                
-                let newRun = HermesRun(
-                    id: "run-chat-\(UUID().uuidString.prefix(6).lowercased())",
-                    timestamp: Date(),
-                    prompt: "/chat \(prompt)",
-                    response: sanitisedResult.text,
-                    isSuccess: true,
-                    durationMs: 800
-                )
-                self.runs.insert(newRun, at: 0)
-                
-                // Add log entry
-                self.logs.append(LogLine(
-                    id: UUID().uuidString,
-                    timestamp: Date(),
-                    level: "INFO",
-                    message: "Mock Chat simulation complete. Output sanitised."
-                ))
-                
-                // Update state to idle
+            guard !chatState.isActive else {
+                errorMessage = "Another remote chat stream is already active."
                 if let currentStatus = status {
                     status = HermesStatus(
-                        state: .idle,
+                        state: .error,
                         uptimeSeconds: currentStatus.uptimeSeconds,
                         relayConnected: currentStatus.relayConnected,
                         activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
                     )
+                }
+                isPendingResponse = false
+                return
+            }
+            
+            chatState = .validating
+            
+            let prompt = command.hasPrefix("/chat ")
+                ? String(command.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
+            
+            // Prompt Validation
+            let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedPrompt.isEmpty else {
+                errorMessage = "Chat prompt cannot be empty."
+                chatState = .failed("Chat prompt cannot be empty.")
+                if let currentStatus = status {
+                    status = HermesStatus(
+                        state: .error,
+                        uptimeSeconds: currentStatus.uptimeSeconds,
+                        relayConnected: currentStatus.relayConnected,
+                        activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                    )
+                }
+                isPendingResponse = false
+                return
+            }
+
+            guard let promptData = trimmedPrompt.data(using: .utf8) else {
+                errorMessage = "Invalid prompt encoding."
+                chatState = .failed("Invalid prompt encoding.")
+                if let currentStatus = status {
+                    status = HermesStatus(
+                        state: .error,
+                        uptimeSeconds: currentStatus.uptimeSeconds,
+                        relayConnected: currentStatus.relayConnected,
+                        activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                    )
+                }
+                isPendingResponse = false
+                return
+            }
+
+            guard promptData.count <= 16384 else {
+                errorMessage = "Chat prompt exceeds maximum allowed size of 16KB."
+                chatState = .failed("Chat prompt exceeds maximum allowed size of 16KB.")
+                if let currentStatus = status {
+                    status = HermesStatus(
+                        state: .error,
+                        uptimeSeconds: currentStatus.uptimeSeconds,
+                        relayConnected: currentStatus.relayConnected,
+                        activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                    )
+                }
+                isPendingResponse = false
+                return
+            }
+            
+            let currentMode = UserDefaults.standard.string(forKey: "HermesServiceMode") ?? "mock"
+            if currentMode == "mock" {
+                // Mock execution flow
+                let runID = "run-chat-\(UUID().uuidString.prefix(6).lowercased())"
+                self.activeChatRunID = runID
+                
+                let placeholderRun = HermesRun(
+                    id: runID,
+                    timestamp: Date(),
+                    prompt: "/chat \(prompt)",
+                    response: "",
+                    isSuccess: false,
+                    durationMs: 0
+                )
+                self.runs.insert(placeholderRun, at: 0)
+                
+                self.activeChatTask = Task {
+                    self.chatState = .connecting
+                    do {
+                        try await Task.sleep(nanoseconds: 200_000_000) // 200ms
+                    } catch {
+                        return
+                    }
+                    
+                    self.chatState = .streaming
+                    
+                    let mockOpenAIKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+                    let mockChunks = [
+                        "Hello! This is a mock chat response for your prompt: \"\(prompt)\".\n",
+                        "\u{001B}[31mThis text had ANSI colors\u{001B}[0m and a hidden link \u{001B}]8;;http://malicious.url\u{0007}Click Here\u{001B}]8;;\u{0007}.\n",
+                        "System user directory: /Users/sysadmin/hermes-agent\n",
+                        "Secret OpenAI key: \(mockOpenAIKey)\n",
+                        "API_SECRET = 'my-super-secret-credentials'\n",
+                        "Commit hash 8220c964ecedcc55ffceb7ce4aaeba5f038cc25c."
+                    ]
+                    
+                    var rawMockAccumulated = ""
+                    let startTime = Date()
+                    
+                    for chunk in mockChunks {
+                        guard !Task.isCancelled else { break }
+                        
+                        rawMockAccumulated += chunk
+                        
+                        let sanitisedResult = OutputSanitiser.sanitise(rawMockAccumulated, isStreaming: true)
+                        
+                        if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                            self.runs[index] = HermesRun(
+                                id: runID,
+                                timestamp: placeholderRun.timestamp,
+                                prompt: placeholderRun.prompt,
+                                response: sanitisedResult.text,
+                                isSuccess: false,
+                                durationMs: Int(Date().timeIntervalSince(startTime) * 1000)
+                            )
+                        }
+                        
+                        do {
+                            try await Task.sleep(nanoseconds: 150_000_000)
+                        } catch {
+                            break
+                        }
+                    }
+                    
+                    guard !Task.isCancelled else {
+                        return
+                    }
+                    
+                    let finalSanitised = OutputSanitiser.sanitise(rawMockAccumulated, isStreaming: false)
+                    if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                        self.runs[index] = HermesRun(
+                            id: runID,
+                            timestamp: placeholderRun.timestamp,
+                            prompt: placeholderRun.prompt,
+                            response: finalSanitised.text,
+                            isSuccess: true,
+                            durationMs: Int(Date().timeIntervalSince(startTime) * 1000)
+                        )
+                    }
+                    
+                    self.logs.append(LogLine(
+                        id: UUID().uuidString,
+                        timestamp: Date(),
+                        level: "INFO",
+                        message: "Mock Chat simulation complete. Output sanitised."
+                    ))
+                    
+                    self.chatState = .completed
+                    self.activeChatTask = nil
+                    self.activeChatRunID = nil
+                    
+                    if let currentStatus = self.status {
+                        self.status = HermesStatus(
+                            state: .idle,
+                            uptimeSeconds: currentStatus.uptimeSeconds,
+                            relayConnected: currentStatus.relayConnected,
+                            activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                        )
+                    }
+                    self.isPendingResponse = false
                 }
             } else {
                 // Live execution block
@@ -260,50 +394,7 @@ public class HermesViewModel: ObservableObject {
 
                 if !isDeveloperRemoteChatEnabled {
                     errorMessage = "Remote chat is disabled. Enable the developer remote chat gate to test stdin-based Hermes chat execution."
-                    if let currentStatus = status {
-                        status = HermesStatus(
-                            state: .error,
-                            uptimeSeconds: currentStatus.uptimeSeconds,
-                            relayConnected: currentStatus.relayConnected,
-                            activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
-                        )
-                    }
-                    isPendingResponse = false
-                    return
-                }
-
-                // Prompt Validation
-                let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmedPrompt.isEmpty else {
-                    errorMessage = "Chat prompt cannot be empty."
-                    if let currentStatus = status {
-                        status = HermesStatus(
-                            state: .error,
-                            uptimeSeconds: currentStatus.uptimeSeconds,
-                            relayConnected: currentStatus.relayConnected,
-                            activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
-                        )
-                    }
-                    isPendingResponse = false
-                    return
-                }
-
-                guard let promptData = trimmedPrompt.data(using: .utf8) else {
-                    errorMessage = "Invalid prompt encoding."
-                    if let currentStatus = status {
-                        status = HermesStatus(
-                            state: .error,
-                            uptimeSeconds: currentStatus.uptimeSeconds,
-                            relayConnected: currentStatus.relayConnected,
-                            activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
-                        )
-                    }
-                    isPendingResponse = false
-                    return
-                }
-
-                guard promptData.count <= 16384 else {
-                    errorMessage = "Chat prompt exceeds maximum allowed size of 16KB."
+                    chatState = .failed("Remote chat is disabled.")
                     if let currentStatus = status {
                         status = HermesStatus(
                             state: .error,
@@ -325,6 +416,7 @@ public class HermesViewModel: ObservableObject {
 
                 guard settings.isValid else {
                     errorMessage = "Remote host is not configured."
+                    chatState = .failed("Remote host is not configured.")
                     if let currentStatus = status {
                         status = HermesStatus(
                             state: .error,
@@ -347,6 +439,7 @@ public class HermesViewModel: ObservableObject {
 
                 let startTime = Date()
                 let runID = "run-chat-\(UUID().uuidString.prefix(6).lowercased())"
+                self.activeChatRunID = runID
                 
                 // Insert a placeholder run card so we can update it in real-time!
                 let placeholderRun = HermesRun(
@@ -359,155 +452,207 @@ public class HermesViewModel: ObservableObject {
                 )
                 self.runs.insert(placeholderRun, at: 0)
 
-                var rawStdout = ""
-                var rawStderr = ""
-                var executionStatus = -1
-                var didTimeOut = false
-                var failedReason: String? = nil
+                self.chatState = .connecting
 
-                let stream = remoteSSHExecutor.executeStreaming(
-                    command: .hermesChat,
-                    settings: settings,
-                    timeout: 30,
-                    stdinData: promptData
-                )
+                self.activeChatTask = Task {
+                    var rawStdout = ""
+                    var rawStderr = ""
+                    var executionStatus = -1
+                    var didTimeOut = false
+                    var failedReason: String? = nil
 
-                for await event in stream {
-                    switch event {
-                    case .stdout(let text):
-                        rawStdout += text
-                        let sanitisedResult = OutputSanitiser.sanitise(rawStdout)
+                    let stream = self.remoteSSHExecutor.executeStreaming(
+                        command: .hermesChat,
+                        settings: settings,
+                        timeout: 30,
+                        stdinData: promptData
+                    )
+
+                    for await event in stream {
+                        guard !Task.isCancelled else {
+                            break
+                        }
+                        
+                        switch event {
+                        case .stdout(let text):
+                            if self.chatState == .connecting {
+                                self.chatState = .streaming
+                            }
+                            rawStdout += text
+                            let sanitisedResult = OutputSanitiser.sanitise(rawStdout, isStreaming: true)
+                            if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                                self.runs[index] = HermesRun(
+                                    id: runID,
+                                    timestamp: placeholderRun.timestamp,
+                                    prompt: placeholderRun.prompt,
+                                    response: sanitisedResult.text,
+                                    isSuccess: false,
+                                    durationMs: Int(Date().timeIntervalSince(startTime) * 1000)
+                                )
+                            }
+                            
+                        case .stderr(let text):
+                            rawStderr += text
+                            let sanitisedText = OutputSanitiser.sanitise(text).text
+                            if !sanitisedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                self.logs.append(LogLine(
+                                    id: UUID().uuidString,
+                                    timestamp: Date(),
+                                    level: "INFO",
+                                    message: "Remote chat stderr: \(sanitisedText)"
+                                ))
+                            }
+                            
+                        case .status(let text):
+                            if self.chatState == .connecting {
+                                self.chatState = .streaming
+                            }
+                            self.logs.append(LogLine(
+                                id: UUID().uuidString,
+                                timestamp: Date(),
+                                level: "INFO",
+                                message: "Remote status: \(text)"
+                            ))
+                            
+                        case .completed(let exitCode):
+                            executionStatus = Int(exitCode)
+                            
+                        case .failed(let reason):
+                            failedReason = reason
+                            
+                        case .timedOut:
+                            didTimeOut = true
+                        }
+                    }
+
+                    guard !Task.isCancelled else {
+                        return
+                    }
+
+                    let durationMs = Int(Date().timeIntervalSince(startTime) * 1000)
+
+                    if didTimeOut {
+                        self.chatState = .timedOut
+                        self.errorMessage = "The connection timed out after 30 seconds. Verify remote host performance."
                         if let index = self.runs.firstIndex(where: { $0.id == runID }) {
                             self.runs[index] = HermesRun(
                                 id: runID,
                                 timestamp: placeholderRun.timestamp,
                                 prompt: placeholderRun.prompt,
-                                response: sanitisedResult.text,
+                                response: "[Timeout] The connection timed out after 30 seconds.",
                                 isSuccess: false,
-                                durationMs: Int(Date().timeIntervalSince(startTime) * 1000)
+                                durationMs: durationMs
                             )
                         }
-                        
-                    case .stderr(let text):
-                        rawStderr += text
-                        let sanitisedText = OutputSanitiser.sanitise(text).text
-                        if !sanitisedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            self.logs.append(LogLine(
-                                id: UUID().uuidString,
-                                timestamp: Date(),
-                                level: "INFO",
-                                message: "Remote chat stderr: \(sanitisedText)"
-                            ))
+                        if let currentStatus = self.status {
+                            self.status = HermesStatus(
+                                state: .error,
+                                uptimeSeconds: currentStatus.uptimeSeconds,
+                                relayConnected: currentStatus.relayConnected,
+                                activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                            )
                         }
-                        
-                    case .status(let text):
-                        self.logs.append(LogLine(
-                            id: UUID().uuidString,
-                            timestamp: Date(),
-                            level: "INFO",
-                            message: "Remote status: \(text)"
-                        ))
-                        
-                    case .completed(let exitCode):
-                        executionStatus = Int(exitCode)
-                        
-                    case .failed(let reason):
-                        failedReason = reason
-                        
-                    case .timedOut:
-                        didTimeOut = true
+                        self.activeChatTask = nil
+                        self.activeChatRunID = nil
+                        self.isPendingResponse = false
+                        return
                     }
-                }
 
-                let durationMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                    if let reason = failedReason {
+                        self.chatState = .failed(reason)
+                        self.errorMessage = "SSH command execution failed: \(reason)"
+                        if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                            self.runs[index] = HermesRun(
+                                id: runID,
+                                timestamp: placeholderRun.timestamp,
+                                prompt: placeholderRun.prompt,
+                                response: "[Failed] SSH command execution failed: \(reason)",
+                                isSuccess: false,
+                                durationMs: durationMs
+                            )
+                        }
+                        if let currentStatus = self.status {
+                            self.status = HermesStatus(
+                                state: .error,
+                                uptimeSeconds: currentStatus.uptimeSeconds,
+                                relayConnected: currentStatus.relayConnected,
+                                activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                            )
+                        }
+                        self.activeChatTask = nil
+                        self.activeChatRunID = nil
+                        self.isPendingResponse = false
+                        return
+                    }
 
-                if didTimeOut {
-                    errorMessage = "The connection timed out after 30 seconds. Verify remote host performance."
+                    let sanitisedStdout = OutputSanitiser.sanitise(rawStdout, isStreaming: false)
+                    let sanitisedStderr = OutputSanitiser.sanitise(rawStderr)
+
+                    if executionStatus != 0 {
+                        let safeStderr = sanitisedStderr.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let errMsg = "SSH command failed (exit code: \(executionStatus)).\(safeStderr.isEmpty ? "" : " Detail: \(safeStderr)")"
+                        self.chatState = .failed(errMsg)
+                        self.errorMessage = errMsg
+                        if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                            self.runs[index] = HermesRun(
+                                id: runID,
+                                timestamp: placeholderRun.timestamp,
+                                prompt: placeholderRun.prompt,
+                                response: "[Failed] \(errMsg)",
+                                isSuccess: false,
+                                durationMs: durationMs
+                            )
+                        }
+                        if let currentStatus = self.status {
+                            self.status = HermesStatus(
+                                state: .error,
+                                uptimeSeconds: currentStatus.uptimeSeconds,
+                                relayConnected: currentStatus.relayConnected,
+                                activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                            )
+                        }
+                        self.activeChatTask = nil
+                        self.activeChatRunID = nil
+                        self.isPendingResponse = false
+                        return
+                    }
+
+                    // Successful execution complete!
+                    self.chatState = .completed
                     if let index = self.runs.firstIndex(where: { $0.id == runID }) {
-                        self.runs.remove(at: index)
+                        self.runs[index] = HermesRun(
+                            id: runID,
+                            timestamp: placeholderRun.timestamp,
+                            prompt: placeholderRun.prompt,
+                            response: sanitisedStdout.text,
+                            isSuccess: true,
+                            durationMs: durationMs
+                        )
                     }
-                    if let currentStatus = status {
-                        status = HermesStatus(
-                            state: .error,
+
+                    // Add completion log entry
+                    self.logs.append(LogLine(
+                        id: UUID().uuidString,
+                        timestamp: Date(),
+                        level: "INFO",
+                        message: "Remote Chat execution complete. Output sanitised."
+                    ))
+
+                    // Update state to idle
+                    if let currentStatus = self.status {
+                        self.status = HermesStatus(
+                            state: .idle,
                             uptimeSeconds: currentStatus.uptimeSeconds,
                             relayConnected: currentStatus.relayConnected,
                             activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
                         )
                     }
-                    isPendingResponse = false
-                    return
-                }
-
-                if let reason = failedReason {
-                    errorMessage = "SSH command execution failed: \(reason)"
-                    if let index = self.runs.firstIndex(where: { $0.id == runID }) {
-                        self.runs.remove(at: index)
-                    }
-                    if let currentStatus = status {
-                        status = HermesStatus(
-                            state: .error,
-                            uptimeSeconds: currentStatus.uptimeSeconds,
-                            relayConnected: currentStatus.relayConnected,
-                            activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
-                        )
-                    }
-                    isPendingResponse = false
-                    return
-                }
-
-                let sanitisedStdout = OutputSanitiser.sanitise(rawStdout)
-                let sanitisedStderr = OutputSanitiser.sanitise(rawStderr)
-
-                if executionStatus != 0 {
-                    let safeStderr = sanitisedStderr.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    errorMessage = "SSH command failed (exit code: \(executionStatus)).\(safeStderr.isEmpty ? "" : " Detail: \(safeStderr)")"
-                    if let index = self.runs.firstIndex(where: { $0.id == runID }) {
-                        self.runs.remove(at: index)
-                    }
-                    if let currentStatus = status {
-                        status = HermesStatus(
-                            state: .error,
-                            uptimeSeconds: currentStatus.uptimeSeconds,
-                            relayConnected: currentStatus.relayConnected,
-                            activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
-                        )
-                    }
-                    isPendingResponse = false
-                    return
-                }
-
-                // Successful execution complete!
-                if let index = self.runs.firstIndex(where: { $0.id == runID }) {
-                    self.runs[index] = HermesRun(
-                        id: runID,
-                        timestamp: placeholderRun.timestamp,
-                        prompt: placeholderRun.prompt,
-                        response: sanitisedStdout.text,
-                        isSuccess: true,
-                        durationMs: durationMs
-                    )
-                }
-
-                // Add completion log entry
-                self.logs.append(LogLine(
-                    id: UUID().uuidString,
-                    timestamp: Date(),
-                    level: "INFO",
-                    message: "Remote Chat execution complete. Output sanitised."
-                ))
-
-                // Update state to idle
-                if let currentStatus = status {
-                    status = HermesStatus(
-                        state: .idle,
-                        uptimeSeconds: currentStatus.uptimeSeconds,
-                        relayConnected: currentStatus.relayConnected,
-                        activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
-                    )
+                    self.activeChatTask = nil
+                    self.activeChatRunID = nil
+                    self.isPendingResponse = false
                 }
             }
             
-            isPendingResponse = false
             return
         }
 
@@ -535,6 +680,45 @@ public class HermesViewModel: ObservableObject {
 
         
         isPendingResponse = false
+    }
+    
+    public func cancelActiveChat() {
+        guard chatState == .connecting || chatState == .streaming else { return }
+        
+        self.logs.append(LogLine(
+            id: UUID().uuidString,
+            timestamp: Date(),
+            level: "INFO",
+            message: "Remote chat cancelled by user."
+        ))
+        
+        activeChatTask?.cancel()
+        activeChatTask = nil
+        
+        chatState = .cancelled
+        isPendingResponse = false
+        
+        if let runID = activeChatRunID, let index = self.runs.firstIndex(where: { $0.id == runID }) {
+            let existing = self.runs[index]
+            self.runs[index] = HermesRun(
+                id: runID,
+                timestamp: existing.timestamp,
+                prompt: existing.prompt,
+                response: existing.response.isEmpty ? "[Cancelled]" : existing.response + "\n[Cancelled]",
+                isSuccess: false,
+                durationMs: existing.durationMs
+            )
+        }
+        activeChatRunID = nil
+        
+        if let currentStatus = status {
+            status = HermesStatus(
+                state: .idle,
+                uptimeSeconds: currentStatus.uptimeSeconds,
+                relayConnected: currentStatus.relayConnected,
+                activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+            )
+        }
     }
     
     public func executeQuickAction(_ actionName: String) async {

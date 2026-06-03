@@ -14,7 +14,7 @@ public struct OutputSanitiser: Sendable {
     private static let byteLimit = 65536
     
     /// Sanitises untrusted raw command output string defensively.
-    public static func sanitise(_ input: String) -> SanitisedResult {
+    public static func sanitise(_ input: String, isStreaming: Bool = false) -> SanitisedResult {
         var isTruncated = false
         var rawData = Data(input.utf8)
         
@@ -100,7 +100,46 @@ public struct OutputSanitiser: Sendable {
             text += "\n[output truncated after 65536 bytes]"
         }
         
+        if isStreaming {
+            text = holdBackStreamingSuffix(text)
+        }
+        
         return SanitisedResult(text: text, isTruncated: isTruncated)
+    }
+    
+    private static func holdBackStreamingSuffix(_ text: String) -> String {
+        let patterns = [
+            "\\bsk-[a-zA-Z0-9_-]{0,100}$",
+            "(?i)\\bbearer(?:\\s+[a-zA-Z0-9_\\-\\.\\+]{0,100})?$",
+            "/(?:Users(?:/[a-zA-Z0-9_.-]{0,50})?|User|Use|Us)$",
+            "-----BEGIN[a-zA-Z0-9\\+/=\\s-]{0,2000}$",
+            "(?i)\\b([a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|client_secret|auth)[a-zA-Z0-9_-]*)\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-\\.\\+]{0,100}$"
+        ]
+        
+        var longestMatchLength = 0
+        var matchedRange: NSRange? = nil
+        
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let range = NSRange(text.startIndex..<text.endIndex, in: text)
+                if let match = regex.firstMatch(in: text, options: [], range: range) {
+                    let matchRange = match.range
+                    if matchRange.location != NSNotFound {
+                        let len = matchRange.length
+                        if len > longestMatchLength {
+                            longestMatchLength = len
+                            matchedRange = matchRange
+                        }
+                    }
+                }
+            }
+        }
+        
+        if let matchRange = matchedRange, let swiftRange = Range(matchRange, in: text) {
+            return String(text[..<swiftRange.lowerBound]) + "..."
+        }
+        
+        return text
     }
 }
 

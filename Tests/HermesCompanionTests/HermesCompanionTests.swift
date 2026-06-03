@@ -979,6 +979,152 @@ final class HermesCompanionTests: XCTestCase {
         let count = await task.value
         XCTAssertLessThan(count, 10)
     }
+
+    // MARK: - Batch 2G Stream Redaction & UX Hardening Tests
+    
+    func testStreamRedactionSplitOpenAIKey() {
+        let chunk1 = "Hello, my key is sk-proj-"
+        let chunk2 = "abc123def456ghi789012345" // complete key length >= 20
+        
+        // During streaming (isStreaming: true)
+        let progressive1 = OutputSanitiser.sanitise(chunk1, isStreaming: true).text
+        XCTAssertFalse(progressive1.contains("sk-proj-"))
+        XCTAssertTrue(progressive1.contains("...")) // suffix held back
+        
+        let progressive2 = OutputSanitiser.sanitise(chunk1 + chunk2, isStreaming: true).text
+        XCTAssertFalse(progressive2.contains("sk-proj-"))
+        XCTAssertTrue(progressive2.contains("[REDACTED_KEY]"))
+        
+        // Final state (isStreaming: false)
+        let final = OutputSanitiser.sanitise(chunk1 + chunk2, isStreaming: false).text
+        XCTAssertFalse(final.contains("sk-proj-"))
+        XCTAssertTrue(final.contains("[REDACTED_KEY]"))
+    }
+    
+    func testStreamRedactionSplitBearerToken() {
+        let chunk1 = "Authorization: Bearer abc"
+        let chunk2 = "def123456789"
+        
+        // During streaming
+        let progressive1 = OutputSanitiser.sanitise(chunk1, isStreaming: true).text
+        XCTAssertFalse(progressive1.contains("Bearer abc"))
+        XCTAssertTrue(progressive1.contains("..."))
+        
+        let progressive2 = OutputSanitiser.sanitise(chunk1 + chunk2, isStreaming: true).text
+        XCTAssertFalse(progressive2.contains("abcdef"))
+        XCTAssertTrue(progressive2.contains("Bearer [REDACTED]"))
+        
+        // Final state
+        let final = OutputSanitiser.sanitise(chunk1 + chunk2, isStreaming: false).text
+        XCTAssertFalse(final.contains("abcdef"))
+        XCTAssertTrue(final.contains("Bearer [REDACTED]"))
+    }
+    
+    func testStreamRedactionSplitHomePath() {
+        let chunk1 = "User path is /Users/sys"
+        let chunk2 = "admin/project"
+        
+        // During streaming
+        let progressive1 = OutputSanitiser.sanitise(chunk1, isStreaming: true).text
+        XCTAssertFalse(progressive1.contains("/Users/sys"))
+        XCTAssertTrue(progressive1.contains("..."))
+        
+        let progressive2 = OutputSanitiser.sanitise(chunk1 + chunk2, isStreaming: true).text
+        XCTAssertFalse(progressive2.contains("/Users/sysadmin"))
+        XCTAssertTrue(progressive2.contains("~/project"))
+        
+        // Final state
+        let final = OutputSanitiser.sanitise(chunk1 + chunk2, isStreaming: false).text
+        XCTAssertFalse(final.contains("/Users/sysadmin"))
+        XCTAssertTrue(final.contains("~/project"))
+    }
+
+    func testChatViewModelStateTransitionsSuccess() async throws {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        UserDefaults.standard.set("mock", forKey: "HermesServiceMode")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        await viewModel.loadAllData()
+        
+        XCTAssertEqual(viewModel.chatState, .idle)
+        
+        viewModel.currentInput = "/chat test transition"
+        
+        // Start command execution
+        let sendTask = Task {
+            await viewModel.sendCommand()
+        }
+        
+        // Wait a tiny bit and assert state is connecting/streaming
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+        XCTAssertTrue(viewModel.chatState == .connecting || viewModel.chatState == .streaming)
+        
+        // Wait for it to finish
+        await sendTask.value
+        
+        XCTAssertEqual(viewModel.chatState, .completed)
+    }
+
+    func testChatViewModelCancellation() async throws {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        UserDefaults.standard.set("mock", forKey: "HermesServiceMode")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        await viewModel.loadAllData()
+        
+        viewModel.currentInput = "/chat cancel test"
+        
+        let sendTask = Task {
+            await viewModel.sendCommand()
+        }
+        
+        // Wait until it enters connecting/streaming state
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(viewModel.chatState == .connecting || viewModel.chatState == .streaming)
+        
+        // Cancel it!
+        viewModel.cancelActiveChat()
+        
+        await sendTask.value
+        
+        XCTAssertEqual(viewModel.chatState, .cancelled)
+        XCTAssertFalse(viewModel.isPendingResponse)
+    }
+
+    func testChatViewModelDuplicateSendRejected() async throws {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        UserDefaults.standard.set("mock", forKey: "HermesServiceMode")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        await viewModel.loadAllData()
+        
+        viewModel.currentInput = "/chat task 1"
+        let task1 = Task {
+            await viewModel.sendCommand()
+        }
+        
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(viewModel.chatState.isActive)
+        
+        // Try starting a second one
+        viewModel.currentInput = "/chat task 2"
+        await viewModel.sendCommand() // Should be rejected immediately
+        
+        XCTAssertEqual(viewModel.errorMessage, "Another remote chat stream is already active.")
+        
+        // Clean up task 1
+        viewModel.cancelActiveChat()
+        await task1.value
+    }
 }
 
 

@@ -196,3 +196,25 @@ public enum DiagnosticsRefreshInterval: String, CaseIterable, Identifiable, Coda
     }
 }
 
+public enum ChatExecutionState: Equatable, Sendable {
+    case idle
+    case validating
+    case connecting
+    case streaming
+    case completed
+    case failed(String)
+    case cancelled
+    case timedOut
+}
+
+extension ChatExecutionState {
+    public var isActive: Bool {
+        switch self {
+        case .validating, .connecting, .streaming:
+            return true
+        default:
+            return false
+        }
+    }
+}
+

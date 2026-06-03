@@ -4,11 +4,13 @@ public struct CommandBar: View {
     @Binding var text: String
     let isPending: Bool
     let onSend: () -> Void
+    let onCancel: (() -> Void)?
     
-    public init(text: Binding<String>, isPending: Bool, onSend: @escaping () -> Void) {
+    public init(text: Binding<String>, isPending: Bool, onSend: @escaping () -> Void, onCancel: (() -> Void)? = nil) {
         self._text = text
         self.isPending = isPending
         self.onSend = onSend
+        self.onCancel = onCancel
     }
     
     public var body: some View {
@@ -37,11 +39,17 @@ public struct CommandBar: View {
             }
             .buttonStyle(.plain)
             
-            Button(action: onSend) {
+            Button(action: {
                 if isPending {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(width: 16, height: 16)
+                    onCancel?()
+                } else {
+                    onSend()
+                }
+            }) {
+                if isPending {
+                    Image(systemName: "stop.circle.fill")
+                        .foregroundColor(.rose)
+                        .font(.system(size: 18))
                 } else {
                     Image(systemName: "arrow.up.circle.fill")
                         .foregroundColor(text.isEmpty ? .white.opacity(0.2) : .hermesTeal)
@@ -49,7 +57,7 @@ public struct CommandBar: View {
                 }
             }
             .buttonStyle(.plain)
-            .disabled(text.isEmpty || isPending)
+            .disabled(!isPending && text.isEmpty)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

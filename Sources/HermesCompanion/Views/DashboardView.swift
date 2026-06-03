@@ -98,10 +98,28 @@ public struct DashboardView: View {
             // Last Context Execution mini card
             if let lastRun = viewModel.runs.first {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("LAST CONTEXT EXECUTION")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.white.opacity(0.45))
-                        .padding(.horizontal, 4)
+                    HStack {
+                        Text("LAST CONTEXT EXECUTION")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white.opacity(0.45))
+                            .padding(.horizontal, 4)
+                        
+                        Spacer()
+                        
+                        if viewModel.chatState == .connecting || viewModel.chatState == .streaming {
+                            Button(action: {
+                                viewModel.cancelActiveChat()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "stop.circle.fill")
+                                    Text("Cancel")
+                                }
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.rose)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                     
                     CommandResultCard(run: lastRun)
                 }
@@ -111,9 +129,16 @@ public struct DashboardView: View {
             Spacer(minLength: 20)
             
             // Floating Command input capsule
-            CommandBar(text: $viewModel.currentInput, isPending: viewModel.isPendingResponse) {
-                Task { await viewModel.sendCommand() }
-            }
+            CommandBar(
+                text: $viewModel.currentInput,
+                isPending: viewModel.isPendingResponse,
+                onSend: {
+                    Task { await viewModel.sendCommand() }
+                },
+                onCancel: {
+                    viewModel.cancelActiveChat()
+                }
+            )
             .frame(maxWidth: 480)
             .padding(.bottom, 10)
         }
