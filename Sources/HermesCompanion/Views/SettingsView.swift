@@ -80,6 +80,9 @@ public struct SettingsView: View {
         } message: {
             Text("Endpoint updated to \(viewModel.apiEndpoint). Services will sync using this pathway in the future.")
         }
+        .onAppear {
+            remoteTestStatus = viewModel.remoteHostStatus.state
+        }
     }
     
     // MARK: - Sections
@@ -90,6 +93,7 @@ public struct SettingsView: View {
     @AppStorage("RemoteUsername") private var remoteUsername = ""
     @AppStorage("RemotePort") private var remotePort = RemoteHostSettings.defaultPort
     @AppStorage("RemoteHermesCommand") private var remoteHermesCommand = RemoteHostSettings.defaultHermesCommand
+    @AppStorage("RemoteIdentityFilePath") private var remoteIdentityFilePath = ""
     #if DEBUG
     @AppStorage("EnableDeveloperRemoteChat") private var enableDeveloperRemoteChat = false
     #endif
@@ -173,6 +177,58 @@ public struct SettingsView: View {
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
 
+                // Identity File
+                HStack(spacing: 10) {
+                    Text("Key File")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 70, alignment: .leading)
+                    
+                    if remoteIdentityFilePath.isEmpty {
+                        Text("Default SSH Key (ssh-agent)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.4))
+                    } else {
+                        Text(URL(fileURLWithPath: remoteIdentityFilePath).lastPathComponent)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white)
+                            .help(remoteIdentityFilePath)
+                    }
+                    
+                    Spacer()
+                    
+                    if !remoteIdentityFilePath.isEmpty {
+                        Button(action: {
+                            remoteIdentityFilePath = ""
+                            viewModel.clearRemoteStatus()
+                            remoteTestStatus = .notConfigured
+                        }) {
+                            Text("Clear")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.rose)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Spacer()
+                            .frame(width: 8)
+                    }
+                    
+                    Button("Browse...") {
+                        selectIdentityFile()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.hermesTeal)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.35))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+
                 // Hermes command
                 HStack(spacing: 10) {
                     Text("Command")
@@ -242,6 +298,21 @@ public struct SettingsView: View {
                 Text("Uses your macOS SSH agent for authentication. No passwords or keys are stored in Solaris.")
                     .font(.system(size: 9.5))
                     .foregroundColor(.white.opacity(0.4))
+                
+                Divider()
+                    .background(Color.white.opacity(0.06))
+                
+                // Agent Forwarding policy statement
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "shield.slash")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.4))
+                        .padding(.top, 1)
+                    Text("Agent forwarding is not implemented. It is intentionally deferred pending a separate security review.")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.white.opacity(0.4))
+                        .lineLimit(nil)
+                }
             }
             .padding(.vertical, 4)
         }
@@ -270,12 +341,36 @@ public struct SettingsView: View {
         }
     }
 
+    private func selectIdentityFile() {
+        #if os(macOS)
+        let openPanel = NSOpenPanel()
+        openPanel.title = "Select Identity File"
+        openPanel.showsResizeIndicator = true
+        openPanel.showsHiddenFiles = true
+        openPanel.canChooseDirectories = false
+        openPanel.canCreateDirectories = false
+        openPanel.allowsMultipleSelection = false
+        
+        let sshPath = (NSHomeDirectory() as NSString).appendingPathComponent(".ssh")
+        openPanel.directoryURL = URL(fileURLWithPath: sshPath)
+        
+        if openPanel.runModal() == .OK {
+            if let url = openPanel.url {
+                remoteIdentityFilePath = url.path
+                viewModel.clearRemoteStatus()
+                remoteTestStatus = .notConfigured
+            }
+        }
+        #endif
+    }
+
     private func testRemoteConnection() {
         let settings = RemoteHostSettings(
             host: remoteHost,
             username: remoteUsername,
             port: remotePort,
-            hermesCommand: remoteHermesCommand
+            hermesCommand: remoteHermesCommand,
+            identityFilePath: remoteIdentityFilePath
         )
         remoteTestStatus = .testing
         Task {

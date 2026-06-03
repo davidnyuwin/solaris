@@ -1837,6 +1837,244 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertEqual(vm.sessions[0].title, "New Chat")
         XCTAssertNotEqual(vm.activeSessionID, id1)
     }
+    
+    // MARK: - Batch 2M Remote Settings & Preflight Tests
+    
+    func testRemoteHostSettingsValidationExtra() throws {
+        // empty host rejected
+        XCTAssertFalse(RemoteHostSettings.isValidHost(""))
+        XCTAssertFalse(RemoteHostSettings.isValidHost("   "))
+        
+        // valid SSH alias accepted
+        XCTAssertTrue(RemoteHostSettings.isValidHost("macmini-cf"))
+        XCTAssertTrue(RemoteHostSettings.isValidHost("my.host.name"))
+        XCTAssertTrue(RemoteHostSettings.isValidHost("192.168.1.1"))
+        
+        // host with shell metacharacters rejected
+        XCTAssertFalse(RemoteHostSettings.isValidHost("host; rm -rf /"))
+        XCTAssertFalse(RemoteHostSettings.isValidHost("host && command"))
+        XCTAssertFalse(RemoteHostSettings.isValidHost("host | command"))
+        XCTAssertFalse(RemoteHostSettings.isValidHost("host-alias -o ProxyCommand=something"))
+        XCTAssertFalse(RemoteHostSettings.isValidHost("host`rm`"))
+        XCTAssertFalse(RemoteHostSettings.isValidHost("host$((1))"))
+        
+        // username validation
+        XCTAssertTrue(RemoteHostSettings.isValidUsername(""))
+        XCTAssertTrue(RemoteHostSettings.isValidUsername("sysadmin"))
+        XCTAssertTrue(RemoteHostSettings.isValidUsername("sys-admin_123"))
+        XCTAssertFalse(RemoteHostSettings.isValidUsername("user; rm -rf /"))
+        XCTAssertFalse(RemoteHostSettings.isValidUsername("user@host"))
+        XCTAssertFalse(RemoteHostSettings.isValidUsername("user name"))
+        
+        // port validation
+        XCTAssertTrue(RemoteHostSettings.isValidPort(22))
+        XCTAssertTrue(RemoteHostSettings.isValidPort(1))
+        XCTAssertTrue(RemoteHostSettings.isValidPort(65535))
+        XCTAssertFalse(RemoteHostSettings.isValidPort(0))
+        XCTAssertFalse(RemoteHostSettings.isValidPort(-22))
+        XCTAssertFalse(RemoteHostSettings.isValidPort(65536))
+        
+        // identity file path validation
+        // 1. empty is valid
+        XCTAssertTrue(RemoteHostSettings.isValidIdentityFilePath(""))
+        // 2. Control characters are rejected
+        XCTAssertFalse(RemoteHostSettings.isValidIdentityFilePath("path\nwith\nnewlines"))
+        
+        // 3. Create temp file to verify existence validation
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempFile = tempDir.appendingPathComponent("mock_key_\(UUID().uuidString)")
+        try "dummy-key".write(to: tempFile, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: tempFile)
+        }
+        
+        XCTAssertTrue(RemoteHostSettings.isValidIdentityFilePath(tempFile.path))
+        
+        // nonexistent path rejected
+        let nonexistentPath = tempDir.appendingPathComponent("nonexistent_key_\(UUID().uuidString)").path
+        XCTAssertFalse(RemoteHostSettings.isValidIdentityFilePath(nonexistentPath))
+        
+        // directory path rejected
+        XCTAssertFalse(RemoteHostSettings.isValidIdentityFilePath(tempDir.path))
+    }
+    
+    func testRemoteSSHExecutorArgumentSafety() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_args.sh")
+        let scriptContent = """
+        #!/bin/sh
+        for arg in "$@"; do
+            echo "arg: $arg"
+        done
+        exit 0
+        """
+        try scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let executor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        
+        // Create temp identity file
+        let tempKeyFile = tempDir.appendingPathComponent("mock_key_args_\(UUID().uuidString)")
+        try "dummy-key".write(to: tempKeyFile, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: tempKeyFile)
+        }
+        
+        let settings = RemoteHostSettings(
+            host: "test-host",
+            username: "test-user",
+            port: 2222,
+            hermesCommand: "hermes",
+            identityFilePath: tempKeyFile.path
+        )
+        
+        let result = await executor.execute(command: .whichHermes, settings: settings)
+        
+        XCTAssertEqual(result.exitCode, 0)
+        let lines = result.stdout.components(separatedBy: .newlines)
+        
+        // Verify key parameters are separate arguments and correctly placed
+        XCTAssertTrue(lines.contains("arg: -p"))
+        XCTAssertTrue(lines.contains("arg: 2222"))
+        XCTAssertTrue(lines.contains("arg: -i"))
+        XCTAssertTrue(lines.contains("arg: \(tempKeyFile.path)"))
+        XCTAssertTrue(lines.contains("arg: test-user@test-host"))
+        XCTAssertTrue(lines.contains("arg: which"))
+        XCTAssertTrue(lines.contains("arg: hermes"))
+    }
+    
+    func testRemotePreflightExecution() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_preflight.sh")
+        let logURL = tempDir.appendingPathComponent("preflight_calls_\(UUID().uuidString).log")
+        
+        let scriptContent = """
+        #!/bin/sh
+        # Log command call
+        echo "$@" >> "\(logURL.path)"
+        
+        # Check command
+        last_arg=""
+        second_last_arg=""
+        third_last_arg=""
+        for arg in "$@"; do
+            third_last_arg="$second_last_arg"
+            second_last_arg="$last_arg"
+            last_arg="$arg"
+        done
+        
+        if [ "$last_arg" = "hermes" ] && [ "$second_last_arg" = "which" ]; then
+            echo "/usr/local/bin/hermes"
+            exit 0
+        elif [ "$last_arg" = "--version" ] && [ "$second_last_arg" = "hermes" ]; then
+            echo "hermes-agent 1.2.3"
+            exit 0
+        elif [ "$last_arg" = "status" ] && [ "$second_last_arg" = "hermes" ]; then
+            echo "Status: OK"
+            exit 0
+        elif echo "$@" | grep -q "chat"; then
+            echo "ERROR: CHAT COMMAND DETECTED" >&2
+            exit 1
+        else
+            echo "Unknown command: $@" >&2
+            exit 1
+        fi
+        """
+        try scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+            try? FileManager.default.removeItem(at: logURL)
+        }
+        
+        let store = ChatHistoryStore(fileURL: tempDir.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        
+        // Inject our custom remote executor using the mock script
+        vm.remoteSSHExecutor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        
+        let settings = RemoteHostSettings(
+            host: "test-host",
+            username: "test-user",
+            port: 22,
+            hermesCommand: "hermes"
+        )
+        
+        await vm.testRemoteConnection(settings: settings)
+        
+        XCTAssertTrue(vm.remoteHostStatus.hermesFound)
+        XCTAssertEqual(vm.remoteHostStatus.hermesVersion, "hermes-agent 1.2.3")
+        XCTAssertEqual(vm.remoteHostStatus.statusSummary, "Status: OK")
+        XCTAssertNil(vm.remoteHostStatus.errorMessage)
+        
+        // Read logged calls
+        let logContent = try String(contentsOf: logURL, encoding: .utf8)
+        let logLines = logContent.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: .newlines)
+        
+        XCTAssertEqual(logLines.count, 3)
+        XCTAssertFalse(logContent.contains("chat"))
+    }
+    
+    func testRemotePreflightSSHErrorSanitisation() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_error.sh")
+        
+        let scriptContent = """
+        #!/bin/sh
+        # Print simulated SSH error and exit with 255
+        echo "ssh: connect to host test-host port 22: Connection refused" >&2
+        exit 255
+        """
+        try scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let store = ChatHistoryStore(fileURL: tempDir.appendingPathComponent(UUID().uuidString))
+        let mockService = MockHermesService()
+        let vm = HermesViewModel(service: mockService, historyStore: store)
+        vm.remoteSSHExecutor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        
+        let settings = RemoteHostSettings(host: "test-host")
+        await vm.testRemoteConnection(settings: settings)
+        
+        XCTAssertFalse(vm.remoteHostStatus.hermesFound)
+        XCTAssertEqual(vm.remoteHostStatus.errorMessage, "Connection refused")
+    }
+    
+    func testDeveloperRemoteChatGateDisabledByDefault() {
+        let prev = UserDefaults.standard.object(forKey: "EnableDeveloperRemoteChat")
+        UserDefaults.standard.removeObject(forKey: "EnableDeveloperRemoteChat")
+        defer {
+            if let prev = prev {
+                UserDefaults.standard.set(prev, forKey: "EnableDeveloperRemoteChat")
+            }
+        }
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat"))
+    }
 }
 
 

@@ -148,6 +148,10 @@ public final class RemoteSSHExecutor: Sendable {
         var sshArgs: [String] = []
         sshArgs.append("-p")
         sshArgs.append("\(settings.port)")
+        if !settings.identityFilePath.isEmpty {
+            sshArgs.append("-i")
+            sshArgs.append(settings.identityFilePath)
+        }
         sshArgs.append("-o")
         sshArgs.append("BatchMode=yes")
         sshArgs.append("-o")
@@ -198,6 +202,10 @@ public final class RemoteSSHExecutor: Sendable {
             var sshArgs: [String] = []
             sshArgs.append("-p")
             sshArgs.append("\(settings.port)")
+            if !settings.identityFilePath.isEmpty {
+                sshArgs.append("-i")
+                sshArgs.append(settings.identityFilePath)
+            }
             sshArgs.append("-o")
             sshArgs.append("BatchMode=yes")
             sshArgs.append("-o")

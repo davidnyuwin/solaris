@@ -432,7 +432,8 @@ public class HermesViewModel: ObservableObject {
                     host: UserDefaults.standard.string(forKey: "RemoteHost") ?? "",
                     username: UserDefaults.standard.string(forKey: "RemoteUsername") ?? "",
                     port: UserDefaults.standard.integer(forKey: "RemotePort") == 0 ? RemoteHostSettings.defaultPort : UserDefaults.standard.integer(forKey: "RemotePort"),
-                    hermesCommand: UserDefaults.standard.string(forKey: "RemoteHermesCommand") ?? RemoteHostSettings.defaultHermesCommand
+                    hermesCommand: UserDefaults.standard.string(forKey: "RemoteHermesCommand") ?? RemoteHostSettings.defaultHermesCommand,
+                    identityFilePath: UserDefaults.standard.string(forKey: "RemoteIdentityFilePath") ?? ""
                 )
 
                 guard settings.isValid else {
@@ -911,6 +912,60 @@ public class HermesViewModel: ObservableObject {
     @MainActor
     public func testRemoteConnection(settings: RemoteHostSettings) async {
         isTestingRemoteConnection = true
+        
+        // 0. Preflight validation
+        guard RemoteHostSettings.isValidHost(settings.host) else {
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: false,
+                hermesVersion: nil,
+                statusSummary: nil,
+                lastCheckedAt: Date(),
+                errorMessage: "Host cannot contain metacharacters or whitespace."
+            )
+            isTestingRemoteConnection = false
+            return
+        }
+        
+        guard RemoteHostSettings.isValidUsername(settings.username) else {
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: false,
+                hermesVersion: nil,
+                statusSummary: nil,
+                lastCheckedAt: Date(),
+                errorMessage: "Username cannot contain spaces, '@', or metacharacters."
+            )
+            isTestingRemoteConnection = false
+            return
+        }
+        
+        guard RemoteHostSettings.isValidPort(settings.port) else {
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: false,
+                hermesVersion: nil,
+                statusSummary: nil,
+                lastCheckedAt: Date(),
+                errorMessage: "Port must be between 1 and 65535."
+            )
+            isTestingRemoteConnection = false
+            return
+        }
+        
+        guard RemoteHostSettings.isValidIdentityFilePath(settings.identityFilePath) else {
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: false,
+                hermesVersion: nil,
+                statusSummary: nil,
+                lastCheckedAt: Date(),
+                errorMessage: "Identity file path does not exist or is not a file."
+            )
+            isTestingRemoteConnection = false
+            return
+        }
+
         remoteHostStatus = RemoteHermesStatusSnapshot(
             hostLabel: settings.displayLabel,
             hermesFound: false,
@@ -975,7 +1030,7 @@ public class HermesViewModel: ObservableObject {
             errors.append("Timed out")
         }
         if !hermesFound {
-            errors.append("Hermes not found")
+            errors.append("Command unavailable (Hermes not found)")
         }
         if whichResult.exitCode != 0 && !whichResult.timedOut {
             errors.append(sanitiseSSHError(whichResult.stderr))
