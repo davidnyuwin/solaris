@@ -346,17 +346,86 @@ public class HermesViewModel: ObservableObject {
                 ))
 
                 let startTime = Date()
-                let result = await remoteSSHExecutor.execute(
+                let runID = "run-chat-\(UUID().uuidString.prefix(6).lowercased())"
+                
+                // Insert a placeholder run card so we can update it in real-time!
+                let placeholderRun = HermesRun(
+                    id: runID,
+                    timestamp: Date(),
+                    prompt: "/chat \(trimmedPrompt)",
+                    response: "",
+                    isSuccess: false,
+                    durationMs: 0
+                )
+                self.runs.insert(placeholderRun, at: 0)
+
+                var rawStdout = ""
+                var rawStderr = ""
+                var executionStatus = -1
+                var didTimeOut = false
+                var failedReason: String? = nil
+
+                let stream = remoteSSHExecutor.executeStreaming(
                     command: .hermesChat,
                     settings: settings,
                     timeout: 30,
                     stdinData: promptData
                 )
 
+                for await event in stream {
+                    switch event {
+                    case .stdout(let text):
+                        rawStdout += text
+                        let sanitisedResult = OutputSanitiser.sanitise(rawStdout)
+                        if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                            self.runs[index] = HermesRun(
+                                id: runID,
+                                timestamp: placeholderRun.timestamp,
+                                prompt: placeholderRun.prompt,
+                                response: sanitisedResult.text,
+                                isSuccess: false,
+                                durationMs: Int(Date().timeIntervalSince(startTime) * 1000)
+                            )
+                        }
+                        
+                    case .stderr(let text):
+                        rawStderr += text
+                        let sanitisedText = OutputSanitiser.sanitise(text).text
+                        if !sanitisedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            self.logs.append(LogLine(
+                                id: UUID().uuidString,
+                                timestamp: Date(),
+                                level: "INFO",
+                                message: "Remote chat stderr: \(sanitisedText)"
+                            ))
+                        }
+                        
+                    case .status(let text):
+                        self.logs.append(LogLine(
+                            id: UUID().uuidString,
+                            timestamp: Date(),
+                            level: "INFO",
+                            message: "Remote status: \(text)"
+                        ))
+                        
+                    case .completed(let exitCode):
+                        executionStatus = Int(exitCode)
+                        
+                    case .failed(let reason):
+                        failedReason = reason
+                        
+                    case .timedOut:
+                        didTimeOut = true
+                    }
+                }
+
                 let durationMs = Int(Date().timeIntervalSince(startTime) * 1000)
 
-                if result.timedOut {
+                if didTimeOut {
                     errorMessage = "The connection timed out after 30 seconds. Verify remote host performance."
+                    if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                        self.runs.remove(at: index)
+                    }
                     if let currentStatus = status {
                         status = HermesStatus(
                             state: .error,
@@ -369,13 +438,32 @@ public class HermesViewModel: ObservableObject {
                     return
                 }
 
-                // Sanitise stdout and stderr
-                let sanitisedStdout = OutputSanitiser.sanitise(result.stdout)
-                let sanitisedStderr = OutputSanitiser.sanitise(result.stderr)
+                if let reason = failedReason {
+                    errorMessage = "SSH command execution failed: \(reason)"
+                    if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                        self.runs.remove(at: index)
+                    }
+                    if let currentStatus = status {
+                        status = HermesStatus(
+                            state: .error,
+                            uptimeSeconds: currentStatus.uptimeSeconds,
+                            relayConnected: currentStatus.relayConnected,
+                            activeJobsCount: max(0, currentStatus.activeJobsCount - 1)
+                        )
+                    }
+                    isPendingResponse = false
+                    return
+                }
 
-                if result.exitCode != 0 {
+                let sanitisedStdout = OutputSanitiser.sanitise(rawStdout)
+                let sanitisedStderr = OutputSanitiser.sanitise(rawStderr)
+
+                if executionStatus != 0 {
                     let safeStderr = sanitisedStderr.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    errorMessage = "SSH command failed (exit code: \(result.exitCode)).\(safeStderr.isEmpty ? "" : " Detail: \(safeStderr)")"
+                    errorMessage = "SSH command failed (exit code: \(executionStatus)).\(safeStderr.isEmpty ? "" : " Detail: \(safeStderr)")"
+                    if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                        self.runs.remove(at: index)
+                    }
                     if let currentStatus = status {
                         status = HermesStatus(
                             state: .error,
@@ -388,25 +476,17 @@ public class HermesViewModel: ObservableObject {
                     return
                 }
 
-                // Add log entry for stderr if any
-                if !sanitisedStderr.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    self.logs.append(LogLine(
-                        id: UUID().uuidString,
-                        timestamp: Date(),
-                        level: "ERROR",
-                        message: "Remote chat stderr: \(sanitisedStderr.text)"
-                    ))
+                // Successful execution complete!
+                if let index = self.runs.firstIndex(where: { $0.id == runID }) {
+                    self.runs[index] = HermesRun(
+                        id: runID,
+                        timestamp: placeholderRun.timestamp,
+                        prompt: placeholderRun.prompt,
+                        response: sanitisedStdout.text,
+                        isSuccess: true,
+                        durationMs: durationMs
+                    )
                 }
-
-                let newRun = HermesRun(
-                    id: "run-chat-\(UUID().uuidString.prefix(6).lowercased())",
-                    timestamp: Date(),
-                    prompt: "/chat \(trimmedPrompt)",
-                    response: sanitisedStdout.text,
-                    isSuccess: true,
-                    durationMs: durationMs
-                )
-                self.runs.insert(newRun, at: 0)
 
                 // Add completion log entry
                 self.logs.append(LogLine(

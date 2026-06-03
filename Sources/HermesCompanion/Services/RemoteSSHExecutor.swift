@@ -48,6 +48,17 @@ public struct RemoteSSHResult: Sendable {
     public let timedOut: Bool
 }
 
+// MARK: - SSH Stream Events
+
+public enum RemoteSSHStreamEvent: Sendable, Equatable {
+    case stdout(String)
+    case stderr(String)
+    case status(String)
+    case completed(exitCode: Int32)
+    case failed(String)
+    case timedOut
+}
+
 // MARK: - SSH Executor
 
 /// Executes allowlisted read-only Hermes commands on a remote host via
@@ -153,6 +164,172 @@ public final class RemoteSSHExecutor: Sendable {
             startTime: startTime,
             stdinData: stdinData
         )
+    }
+
+    /// Run an allowlisted command on the remote host and stream the results back.
+    /// - Parameters:
+    ///   - command: The `RemoteHermesCommand` to execute.
+    ///   - settings: Connection settings (host, username, port, hermesCommand).
+    ///   - timeout: Per-command timeout in seconds (default 30).
+    ///   - stdinData: Optional standard input data payload (max 16KB).
+    /// - Returns: An `AsyncStream` emitting `RemoteSSHStreamEvent`.
+    public func executeStreaming(
+        command: RemoteHermesCommand,
+        settings: RemoteHostSettings,
+        timeout: TimeInterval = 30,
+        stdinData: Data? = nil
+    ) -> AsyncStream<RemoteSSHStreamEvent> {
+        return AsyncStream { continuation in
+            guard settings.isValid else {
+                continuation.yield(.failed("Remote host is not configured."))
+                continuation.finish()
+                return
+            }
+            
+            if let stdin = stdinData, stdin.count > 16384 {
+                continuation.yield(.failed("Standard input payload exceeds maximum allowed size of 16KB."))
+                continuation.finish()
+                return
+            }
+            
+            let hermesBase = sanitiseHermesCommand(settings.hermesCommand)
+            let remoteArgs = command.remoteArguments(hermesCommandBase: hermesBase)
+            
+            var sshArgs: [String] = []
+            sshArgs.append("-p")
+            sshArgs.append("\(settings.port)")
+            sshArgs.append("-o")
+            sshArgs.append("BatchMode=yes")
+            sshArgs.append("-o")
+            sshArgs.append("ConnectTimeout=5")
+            sshArgs.append("-o")
+            sshArgs.append("StrictHostKeyChecking=accept-new")
+            sshArgs.append(settings.userAtHost)
+            sshArgs.append(contentsOf: remoteArgs)
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: sshPath)
+            process.arguments = sshArgs
+            
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+            
+            let stdinPipe = Pipe()
+            if stdinData != nil {
+                process.standardInput = stdinPipe
+            }
+            
+            final class TimeoutFlag: @unchecked Sendable {
+                private(set) var didTimeout = false
+                func set() { didTimeout = true }
+            }
+            let timeoutFlag = TimeoutFlag()
+            
+            let timeoutTask = Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                if process.isRunning {
+                    timeoutFlag.set()
+                    process.terminate()
+                }
+            }
+            
+            let stdoutSanitiser = StreamingOutputSanitiser()
+            let stderrSanitiser = StreamingOutputSanitiser()
+            
+            let stdoutReadingTask = Task {
+                let stdoutHandle = stdoutPipe.fileHandleForReading
+                while !Task.isCancelled {
+                    do {
+                        if let chunk = try stdoutHandle.read(upToCount: 4096), !chunk.isEmpty {
+                            let incrementalText = stdoutSanitiser.appendAndSanitise(chunk)
+                            if !incrementalText.isEmpty {
+                                continuation.yield(.stdout(incrementalText))
+                            }
+                        } else {
+                            break
+                        }
+                    } catch {
+                        break
+                    }
+                }
+            }
+            
+            let stderrReadingTask = Task {
+                let stderrHandle = stderrPipe.fileHandleForReading
+                while !Task.isCancelled {
+                    do {
+                        if let chunk = try stderrHandle.read(upToCount: 4096), !chunk.isEmpty {
+                            let incrementalText = stderrSanitiser.appendAndSanitise(chunk)
+                            if !incrementalText.isEmpty {
+                                continuation.yield(.stderr(incrementalText))
+                            }
+                        } else {
+                            break
+                        }
+                    } catch {
+                        break
+                    }
+                }
+            }
+            
+            process.terminationHandler = { proc in
+                timeoutTask.cancel()
+                stdoutReadingTask.cancel()
+                stderrReadingTask.cancel()
+                
+                if stdinData != nil {
+                    try? stdinPipe.fileHandleForWriting.close()
+                }
+                
+                if timeoutFlag.didTimeout {
+                    continuation.yield(.timedOut)
+                } else if proc.terminationStatus != 0 {
+                    continuation.yield(.completed(exitCode: proc.terminationStatus))
+                } else {
+                    continuation.yield(.completed(exitCode: 0))
+                }
+                continuation.finish()
+            }
+            
+            continuation.onTermination = { [weak process] _ in
+                timeoutTask.cancel()
+                stdoutReadingTask.cancel()
+                stderrReadingTask.cancel()
+                if let proc = process, proc.isRunning {
+                    proc.terminate()
+                }
+                if stdinData != nil {
+                    try? stdinPipe.fileHandleForWriting.close()
+                }
+            }
+            
+            do {
+                try process.run()
+                
+                if let stdinData = stdinData {
+                    do {
+                        try stdinPipe.fileHandleForWriting.write(contentsOf: stdinData)
+                    } catch {
+                        try? stdinPipe.fileHandleForWriting.close()
+                        if process.isRunning {
+                            process.terminate()
+                        }
+                    }
+                    try? stdinPipe.fileHandleForWriting.close()
+                }
+            } catch {
+                timeoutTask.cancel()
+                stdoutReadingTask.cancel()
+                stderrReadingTask.cancel()
+                if stdinData != nil {
+                    try? stdinPipe.fileHandleForWriting.close()
+                }
+                continuation.yield(.failed(error.localizedDescription))
+                continuation.finish()
+            }
+        }
     }
 
 

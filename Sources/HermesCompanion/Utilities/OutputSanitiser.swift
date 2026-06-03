@@ -103,3 +103,128 @@ public struct OutputSanitiser: Sendable {
         return SanitisedResult(text: text, isTruncated: isTruncated)
     }
 }
+
+// MARK: - Stateful Streaming Output Sanitiser
+
+public final class StreamingOutputSanitiser: @unchecked Sendable {
+    private enum ParserState {
+        case normal
+        case sawEsc
+        case ansiCsi
+        case osc
+        case oscEsc
+    }
+    
+    private var state: ParserState = .normal
+    private var utf8Buffer = Data()
+    
+    public init() {}
+    
+    /// Processes a new chunk of raw bytes, statefully strips ANSI/OSC/Control sequences,
+    /// and returns the incremental sanitised string.
+    public func appendAndSanitise(_ chunk: Data) -> String {
+        utf8Buffer.append(chunk)
+        
+        let (completeBytes, remainingBytes) = findCompleteUTF8Prefix(in: utf8Buffer)
+        utf8Buffer = remainingBytes
+        
+        guard !completeBytes.isEmpty else {
+            return ""
+        }
+        
+        let decodedText = String(decoding: completeBytes, as: UTF8.self)
+        
+        var filteredText = ""
+        filteredText.reserveCapacity(decodedText.count)
+        
+        for scalar in decodedText.unicodeScalars {
+            let val = scalar.value
+            
+            switch state {
+            case .normal:
+                if val == 0x001B { // ESC
+                    state = .sawEsc
+                } else {
+                    // Control Character Filtering (Exclude C0/C1 control characters except safe whitespace)
+                    // Safe whitespace: Tab (9), LF (10), CR (13)
+                    let isControl = (val <= 8) || (val >= 11 && val <= 12) || (val >= 14 && val <= 31) || (val == 127) || (val >= 128 && val <= 159)
+                    if !isControl {
+                        filteredText.append(Character(scalar))
+                    }
+                }
+                
+            case .sawEsc:
+                if val == 0x005B { // '['
+                    state = .ansiCsi
+                } else if val == 0x005D { // ']'
+                    state = .osc
+                } else {
+                    state = .normal
+                }
+                
+            case .ansiCsi:
+                if val >= 0x40 && val <= 0x7E {
+                    state = .normal
+                } else if val >= 0x20 && val <= 0x3F {
+                    break
+                } else {
+                    state = .normal
+                }
+                
+            case .osc:
+                if val == 0x001B { // ESC
+                    state = .oscEsc
+                } else if val == 0x0007 { // BEL
+                    state = .normal
+                } else {
+                    break
+                }
+                
+            case .oscEsc:
+                if val == 0x005C { // '\'
+                    state = .normal
+                } else {
+                    state = .osc
+                }
+            }
+        }
+        
+        return filteredText
+    }
+    
+    private func findCompleteUTF8Prefix(in data: Data) -> (complete: Data, remaining: Data) {
+        guard !data.isEmpty else { return (data, Data()) }
+        
+        let maxUTF8Length = 4
+        let lastBytesCount = min(data.count, maxUTF8Length)
+        let startIndex = data.count - lastBytesCount
+        
+        for i in (startIndex..<data.count).reversed() {
+            let byte = data[i]
+            if byte < 0x80 {
+                return (data.prefix(i + 1), data.suffix(data.count - (i + 1)))
+            } else if byte >= 0xC0 {
+                let expectedLen: Int
+                if (byte & 0xE0) == 0xC0 {
+                    expectedLen = 2
+                } else if (byte & 0xF0) == 0xE0 {
+                    expectedLen = 3
+                } else if (byte & 0xF0) == 0xF0 {
+                    expectedLen = 4
+                } else {
+                    return (data.prefix(i + 1), data.suffix(data.count - (i + 1)))
+                }
+                
+                let actualLen = data.count - i
+                if actualLen >= expectedLen {
+                    return (data, Data())
+                } else {
+                    return (data.prefix(i), data.suffix(actualLen))
+                }
+            }
+        }
+        
+        return (data, Data())
+    }
+}
+

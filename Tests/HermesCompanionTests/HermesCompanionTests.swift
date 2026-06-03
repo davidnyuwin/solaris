@@ -811,6 +811,174 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertEqual(result.duration, 0)
         XCTAssertTrue(result.stderr.contains("payload exceeds maximum allowed size of 16KB"))
     }
+
+    // MARK: - Batch 2F Streaming Sanitiser Tests
+    
+    func testStreamingOutputSanitiserAnsiCsiSplit() {
+        let sanitiser = StreamingOutputSanitiser()
+        
+        let chunk1 = Data("Hello \u{001B}[3".utf8)
+        let chunk2 = Data("1mWorld".utf8)
+        
+        let result1 = sanitiser.appendAndSanitise(chunk1)
+        let result2 = sanitiser.appendAndSanitise(chunk2)
+        
+        XCTAssertEqual(result1, "Hello ")
+        XCTAssertEqual(result2, "World")
+    }
+    
+    func testStreamingOutputSanitiserOscSplit() {
+        let sanitiser = StreamingOutputSanitiser()
+        
+        let chunk1 = Data("Hello \u{001B}]8;;http://example".utf8)
+        let chunk2 = Data(".com\u{0007}World".utf8)
+        
+        let result1 = sanitiser.appendAndSanitise(chunk1)
+        let result2 = sanitiser.appendAndSanitise(chunk2)
+        
+        XCTAssertEqual(result1, "Hello ")
+        XCTAssertEqual(result2, "World")
+    }
+    
+    func testStreamingOutputSanitiserUtf8Split() {
+        let sanitiser = StreamingOutputSanitiser()
+        
+        // "あ" in UTF-8 is [0xE3, 0x81, 0x82]
+        let chunk1 = Data([0xE3, 0x81])
+        let chunk2 = Data([0x82, 0x41]) // あ followed by 'A'
+        
+        let result1 = sanitiser.appendAndSanitise(chunk1)
+        let result2 = sanitiser.appendAndSanitise(chunk2)
+        
+        XCTAssertEqual(result1, "")
+        XCTAssertEqual(result2, "あA")
+    }
+    
+    func testRemoteSSHExecutorStreamingSuccess() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_streaming_success.sh")
+        let scriptContent = """
+        #!/bin/sh
+        echo "part 1"
+        sleep 0.1
+        echo "error output" >&2
+        sleep 0.1
+        echo "part 2"
+        exit 0
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let executor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        let settings = RemoteHostSettings(host: "test-host", username: "test-user")
+        
+        let stream = executor.executeStreaming(command: .whichHermes, settings: settings)
+        var events: [RemoteSSHStreamEvent] = []
+        for await event in stream {
+            events.append(event)
+        }
+        
+        // We expect stdout, stderr, and completed events.
+        XCTAssertTrue(events.contains(where: {
+            if case .stdout(let text) = $0 {
+                return text.contains("part 1")
+            }
+            return false
+        }))
+        XCTAssertTrue(events.contains(where: {
+            if case .stdout(let text) = $0 {
+                return text.contains("part 2")
+            }
+            return false
+        }))
+        XCTAssertTrue(events.contains(where: {
+            if case .stderr(let text) = $0 {
+                return text.contains("error output")
+            }
+            return false
+        }))
+        XCTAssertTrue(events.contains(.completed(exitCode: 0)))
+    }
+    
+    func testRemoteSSHExecutorStreamingTimeout() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_streaming_timeout.sh")
+        let scriptContent = """
+        #!/bin/sh
+        sleep 5
+        exit 0
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let executor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        let settings = RemoteHostSettings(host: "test-host", username: "test-user")
+        
+        let stream = executor.executeStreaming(command: .whichHermes, settings: settings, timeout: 0.2)
+        var events: [RemoteSSHStreamEvent] = []
+        for await event in stream {
+            events.append(event)
+        }
+        
+        XCTAssertTrue(events.contains(.timedOut))
+    }
+    
+    func testRemoteSSHExecutorStreamingCancellation() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_streaming_cancel.sh")
+        let scriptContent = """
+        #!/bin/sh
+        sleep 5
+        exit 0
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let executor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        let settings = RemoteHostSettings(host: "test-host", username: "test-user")
+        
+        let task = Task {
+            let stream = executor.executeStreaming(command: .whichHermes, settings: settings, timeout: 10)
+            var count = 0
+            for await _ in stream {
+                count += 1
+            }
+            return count
+        }
+        
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        task.cancel()
+        
+        let count = await task.value
+        XCTAssertLessThan(count, 10)
+    }
 }
 
 
