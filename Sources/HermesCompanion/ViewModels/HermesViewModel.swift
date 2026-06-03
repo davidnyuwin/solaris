@@ -212,7 +212,7 @@ public class HermesViewModel: ObservableObject {
         // Handle cancel command typed in console
         if command.lowercased() == "/cancel" {
             if chatState == .connecting || chatState == .streaming {
-                cancelActiveChat()
+                await cancelActiveChat()
             } else {
                 errorMessage = "No active remote chat stream to cancel."
             }
@@ -709,7 +709,7 @@ public class HermesViewModel: ObservableObject {
         isPendingResponse = false
     }
     
-    public func cancelActiveChat() {
+    public func cancelActiveChat() async {
         guard chatState == .connecting || chatState == .streaming else { return }
         
         self.logs.append(LogLine(
@@ -736,9 +736,7 @@ public class HermesViewModel: ObservableObject {
                 durationMs: existing.durationMs
             )
             self.runs[index] = cancelledRun
-            Task {
-                await self.saveActiveChatRun(cancelledRun)
-            }
+            await self.saveActiveChatRun(cancelledRun)
         }
         activeChatRunID = nil
         

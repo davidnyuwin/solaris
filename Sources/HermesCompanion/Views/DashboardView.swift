@@ -108,7 +108,9 @@ public struct DashboardView: View {
                         
                         if viewModel.chatState == .connecting || viewModel.chatState == .streaming {
                             Button(action: {
-                                viewModel.cancelActiveChat()
+                                Task {
+                                    await viewModel.cancelActiveChat()
+                                }
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "stop.circle.fill")
@@ -136,7 +138,9 @@ public struct DashboardView: View {
                     Task { await viewModel.sendCommand() }
                 },
                 onCancel: {
-                    viewModel.cancelActiveChat()
+                    Task {
+                        await viewModel.cancelActiveChat()
+                    }
                 }
             )
             .frame(maxWidth: 480)

@@ -1096,7 +1096,7 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertTrue(viewModel.chatState == .connecting || viewModel.chatState == .streaming)
         
         // Cancel it!
-        viewModel.cancelActiveChat()
+        await viewModel.cancelActiveChat()
         
         await sendTask.value
         _ = await viewModel.activeChatTask?.value
@@ -1130,7 +1130,7 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertEqual(viewModel.errorMessage, "Another remote chat stream is already active.")
         
         // Clean up task 1
-        viewModel.cancelActiveChat()
+        await viewModel.cancelActiveChat()
         _ = await viewModel.activeChatTask?.value
         await task1.value
     }
@@ -1320,7 +1320,7 @@ final class HermesCompanionTests: XCTestCase {
         }
         
         try? await Task.sleep(nanoseconds: 50_000_000)
-        viewModel.cancelActiveChat()
+        await viewModel.cancelActiveChat()
         
         await sendTask.value
         _ = await viewModel.activeChatTask?.value

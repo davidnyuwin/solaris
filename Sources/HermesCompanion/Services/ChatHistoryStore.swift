@@ -24,7 +24,7 @@ public final class ChatHistoryStore: ChatHistoryStoring, @unchecked Sendable {
             
         let appSupportURL: URL
         if isTesting {
-            appSupportURL = FileManager.default.temporaryDirectory
+            appSupportURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         } else {
             let appSupportURLs = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             appSupportURL = appSupportURLs.first ?? FileManager.default.temporaryDirectory
