@@ -923,7 +923,8 @@ public class HermesViewModel: ObservableObject {
                 hermesVersion: nil,
                 statusSummary: nil,
                 lastCheckedAt: Date(),
-                errorMessage: "Host cannot contain metacharacters or whitespace."
+                errorMessage: "Host cannot contain metacharacters or whitespace.",
+                connectionState: .localValidationFailed
             )
             isTestingRemoteConnection = false
             return
@@ -936,7 +937,8 @@ public class HermesViewModel: ObservableObject {
                 hermesVersion: nil,
                 statusSummary: nil,
                 lastCheckedAt: Date(),
-                errorMessage: "Username cannot contain spaces, '@', or metacharacters."
+                errorMessage: "Username cannot contain spaces, '@', or metacharacters.",
+                connectionState: .localValidationFailed
             )
             isTestingRemoteConnection = false
             return
@@ -949,7 +951,8 @@ public class HermesViewModel: ObservableObject {
                 hermesVersion: nil,
                 statusSummary: nil,
                 lastCheckedAt: Date(),
-                errorMessage: "Port must be between 1 and 65535."
+                errorMessage: "Port must be between 1 and 65535.",
+                connectionState: .localValidationFailed
             )
             isTestingRemoteConnection = false
             return
@@ -965,7 +968,8 @@ public class HermesViewModel: ObservableObject {
                 statusSummary: nil,
                 lastCheckedAt: Date(),
                 errorMessage: diagnostic.message,
-                preflightDiagnostic: diagnostic
+                preflightDiagnostic: diagnostic,
+                connectionState: .sshPreflightFailed
             )
             isTestingRemoteConnection = false
             return
@@ -993,7 +997,8 @@ public class HermesViewModel: ObservableObject {
                 statusSummary: nil,
                 lastCheckedAt: Date(),
                 errorMessage: "Live remote checks are disabled in this build.",
-                preflightDiagnostic: nil
+                preflightDiagnostic: nil,
+                connectionState: .liveChecksDisabled
             )
             isTestingRemoteConnection = false
             return
@@ -1015,7 +1020,8 @@ public class HermesViewModel: ObservableObject {
             statusSummary: nil,
             lastCheckedAt: Date(),
             errorMessage: nil,
-            preflightDiagnostic: passDiag
+            preflightDiagnostic: passDiag,
+            connectionState: .verifying
         )
 
         // 1. which hermes
@@ -1040,7 +1046,8 @@ public class HermesViewModel: ObservableObject {
                 statusSummary: nil,
                 lastCheckedAt: Date(),
                 errorMessage: reason,
-                preflightDiagnostic: passDiag
+                preflightDiagnostic: passDiag,
+                connectionState: .heartbeatFailed
             )
             isTestingRemoteConnection = false
             return
@@ -1113,7 +1120,8 @@ public class HermesViewModel: ObservableObject {
             statusSummary: statusSummary,
             lastCheckedAt: Date(),
             errorMessage: errorMessage,
-            preflightDiagnostic: finalDiag ?? passDiag
+            preflightDiagnostic: finalDiag ?? passDiag,
+            connectionState: errorMessage == nil ? .heartbeatPassed : .heartbeatFailed
         )
 
         isTestingRemoteConnection = false

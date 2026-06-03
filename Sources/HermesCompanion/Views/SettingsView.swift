@@ -81,7 +81,7 @@ public struct SettingsView: View {
             Text("Endpoint updated to \(viewModel.apiEndpoint). Services will sync using this pathway in the future.")
         }
         .onAppear {
-            remoteTestStatus = viewModel.remoteHostStatus.state
+            remoteTestStatus = viewModel.remoteHostStatus.connectionState
         }
     }
     
@@ -98,7 +98,7 @@ public struct SettingsView: View {
     @AppStorage("EnableDeveloperRemoteChat") private var enableDeveloperRemoteChat = false
     #endif
 
-    @State private var remoteTestStatus: RemoteHermesStatusSnapshot.ConnectionState = .notConfigured
+    @State private var remoteTestStatus: RemoteConnectionState = .notConfigured
 
     private var remoteHostSection: some View {
         SettingsCard(
@@ -325,38 +325,48 @@ public struct SettingsView: View {
     }
 
     private var remoteStatusText: String {
-        let isMockMode = (UserDefaults.standard.string(forKey: "HermesServiceMode") == HermesServiceMode.mock.rawValue)
-        
-        if let diagnostic = viewModel.remoteHostStatus.preflightDiagnostic {
-            if diagnostic.status == .fail {
-                return "SSH preflight must pass before connection verification can run."
-            }
-        }
-        
         switch remoteTestStatus {
         case .notConfigured:
             if remoteHost.isEmpty {
                 return "Configure a host to test the SSH connection."
             }
-            if viewModel.remoteHostStatus.preflightDiagnostic == nil {
-                return "Remote Hermes runtime was not checked yet."
-            }
-            return "Connection verification is ready."
-        case .testing:
-            return isMockMode ? "Running mock connection checks..." : "Running allowlisted checks on remote host..."
-        case .connected:
-            return isMockMode ? "Mock remote command completed successfully." : "Connected. Remote Hermes is reachable."
-        case .failed(let reason):
-            return reason
+            return "Remote profile is not configured yet."
+            
+        case .localValidationFailed:
+            return viewModel.remoteHostStatus.errorMessage ?? "Local validation failed."
+            
+        case .sshPreflightFailed:
+            return "SSH preflight must pass before heartbeat checks can run."
+            
+        case .readyToVerify:
+            return "Ready to verify remote connection."
+            
+        case .verifying:
+            return "Checking remote heartbeat…"
+            
+        case .heartbeatPassed:
+            return "Remote heartbeat passed."
+            
+        case .heartbeatFailed:
+            return "Remote heartbeat failed. Review diagnostics below."
+            
+        case .liveChecksDisabled:
+            return "Live remote checks are disabled in this build."
         }
     }
 
     private var remoteStatusColor: Color {
         switch remoteTestStatus {
-        case .notConfigured: return .white.opacity(0.45)
-        case .testing: return .amber
-        case .connected: return .emerald
-        case .failed: return .rose
+        case .notConfigured:
+            return .white.opacity(0.45)
+        case .readyToVerify:
+            return .white.opacity(0.6)
+        case .verifying:
+            return .amber
+        case .heartbeatPassed:
+            return .emerald
+        case .localValidationFailed, .sshPreflightFailed, .heartbeatFailed, .liveChecksDisabled:
+            return .rose
         }
     }
 
@@ -391,10 +401,10 @@ public struct SettingsView: View {
             hermesCommand: remoteHermesCommand,
             identityFilePath: remoteIdentityFilePath
         )
-        remoteTestStatus = .testing
+        remoteTestStatus = .verifying
         Task {
             await viewModel.testRemoteConnection(settings: settings)
-            remoteTestStatus = viewModel.remoteHostStatus.state
+            remoteTestStatus = viewModel.remoteHostStatus.connectionState
         }
     }
 
