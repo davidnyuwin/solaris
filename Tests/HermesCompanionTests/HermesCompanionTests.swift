@@ -491,6 +491,7 @@ final class HermesCompanionTests: XCTestCase {
         
         viewModel.currentInput = "/chat hello there"
         await viewModel.sendCommand()
+        _ = await viewModel.activeChatTask?.value
         
         XCTAssertEqual(viewModel.runs.count, initialRunsCount + 1)
         XCTAssertEqual(viewModel.runs[0].prompt, "/chat hello there")
@@ -649,6 +650,7 @@ final class HermesCompanionTests: XCTestCase {
         let initialRunsCount = viewModel.runs.count
         viewModel.currentInput = "/chat test input payload"
         await viewModel.sendCommand()
+        _ = await viewModel.activeChatTask?.value
         
         XCTAssertEqual(viewModel.runs.count, initialRunsCount + 1)
         XCTAssertEqual(viewModel.runs[0].prompt, "/chat test input payload")
@@ -699,6 +701,7 @@ final class HermesCompanionTests: XCTestCase {
         let initialRunsCount = viewModel.runs.count
         viewModel.currentInput = "/chat failing input"
         await viewModel.sendCommand()
+        _ = await viewModel.activeChatTask?.value
         
         XCTAssertEqual(viewModel.runs.count, initialRunsCount)
         XCTAssertEqual(viewModel.status?.state, .error)
@@ -1064,6 +1067,7 @@ final class HermesCompanionTests: XCTestCase {
         
         // Wait for it to finish
         await sendTask.value
+        _ = await viewModel.activeChatTask?.value
         
         XCTAssertEqual(viewModel.chatState, .completed)
     }
@@ -1092,6 +1096,7 @@ final class HermesCompanionTests: XCTestCase {
         viewModel.cancelActiveChat()
         
         await sendTask.value
+        _ = await viewModel.activeChatTask?.value
         
         XCTAssertEqual(viewModel.chatState, .cancelled)
         XCTAssertFalse(viewModel.isPendingResponse)
@@ -1123,6 +1128,7 @@ final class HermesCompanionTests: XCTestCase {
         
         // Clean up task 1
         viewModel.cancelActiveChat()
+        _ = await viewModel.activeChatTask?.value
         await task1.value
     }
 }

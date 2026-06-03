@@ -28,7 +28,11 @@ public class HermesViewModel: ObservableObject {
     
     // Batch 2G Chat UX / Stream State Hardening
     @Published public var chatState: ChatExecutionState = .idle
+    #if DEBUG
+    internal var activeChatTask: Task<Void, Never>? = nil
+    #else
     private var activeChatTask: Task<Void, Never>? = nil
+    #endif
     private var activeChatRunID: String? = nil
     
     // Batch 1 Diagnostics controls

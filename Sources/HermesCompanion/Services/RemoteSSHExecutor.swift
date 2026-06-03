@@ -231,6 +231,8 @@ public final class RemoteSSHExecutor: Sendable {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 if process.isRunning {
                     timeoutFlag.set()
+                    try? stdoutPipe.fileHandleForReading.close()
+                    try? stderrPipe.fileHandleForReading.close()
                     process.terminate()
                 }
             }
@@ -300,6 +302,8 @@ public final class RemoteSSHExecutor: Sendable {
                 timeoutTask.cancel()
                 stdoutReadingTask.cancel()
                 stderrReadingTask.cancel()
+                try? stdoutPipe.fileHandleForReading.close()
+                try? stderrPipe.fileHandleForReading.close()
                 if let proc = process, proc.isRunning {
                     proc.terminate()
                 }

@@ -88,7 +88,10 @@ public struct OutputSanitiser: Sendable {
             text = assignmentRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "$1: [REDACTED]")
         }
 
-        
+        if isStreaming {
+            text = holdBackStreamingSuffix(text)
+        }
+
         // 6. Path Normalisation (replace absolute /Users/... paths with ~/)
         if let pathRegex = try? NSRegularExpression(pattern: "/Users/[a-zA-Z0-9_.-]+", options: []) {
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
@@ -98,10 +101,6 @@ public struct OutputSanitiser: Sendable {
         // 7. Explicit Truncation Append
         if isTruncated {
             text += "\n[output truncated after 65536 bytes]"
-        }
-        
-        if isStreaming {
-            text = holdBackStreamingSuffix(text)
         }
         
         return SanitisedResult(text: text, isTruncated: isTruncated)
