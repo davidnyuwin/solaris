@@ -302,6 +302,31 @@ public struct SettingsView: View {
                         .lineLimit(2)
                 }
 
+                if viewModel.remoteHostStatus.robustnessState == .retryAvailable {
+                    HStack {
+                        Spacer()
+                        Button(action: triggerRetryConnection) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 10))
+                                Text("Retry Connection (\(viewModel.retryCount)/3)")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.amber.opacity(0.12))
+                            .foregroundColor(.amber)
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.amber.opacity(0.2), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 2)
+                }
+
                 if remoteTestStatus != .notConfigured {
                     Divider()
                         .background(Color.white.opacity(0.06))
@@ -361,6 +386,94 @@ public struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 4)
+
+                    Divider()
+                        .background(Color.white.opacity(0.06))
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Tunnel Status")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white.opacity(0.6))
+                            Text(tunnelStatusText)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(tunnelStatusColor)
+                        }
+
+                        Spacer()
+
+                        let state = viewModel.remoteHostStatus.tunnelState
+                        let isStartingOrStopping = state == .starting || state == .stopping || state == .preparing
+                        let isBlocked = state == .blocked
+
+                        if state == .active || state == .degraded {
+                            Button(action: triggerStopTunnel) {
+                                HStack(spacing: 6) {
+                                    if state == .stopping {
+                                        ProgressView()
+                                            .scaleEffect(0.4)
+                                            .frame(width: 10, height: 10)
+                                    } else {
+                                        Image(systemName: "bolt.slash.fill")
+                                            .font(.system(size: 9))
+                                    }
+                                    Text(state == .stopping ? "Stopping..." : "Stop Tunnel")
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(isStartingOrStopping || isBlocked
+                                    ? Color.white.opacity(0.04)
+                                    : Color.rose.opacity(0.12))
+                                .foregroundColor(isStartingOrStopping || isBlocked
+                                    ? .white.opacity(0.3)
+                                    : .rose)
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(isStartingOrStopping || isBlocked
+                                            ? Color.clear
+                                            : Color.rose.opacity(0.2), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isStartingOrStopping || isBlocked)
+                        } else if state == .notStarted || state == .stopped || state == .failed || state == .blocked {
+                            let isConnected = viewModel.remoteHostStatus.connectionState == .heartbeatPassed
+                            Button(action: triggerStartTunnel) {
+                                HStack(spacing: 6) {
+                                    if state == .starting || state == .preparing {
+                                        ProgressView()
+                                            .scaleEffect(0.4)
+                                            .frame(width: 10, height: 10)
+                                    } else {
+                                        Image(systemName: "bolt.fill")
+                                            .font(.system(size: 9))
+                                    }
+                                    Text(state == .starting || state == .preparing ? "Starting..." : (state == .blocked ? "Tunnel Blocked" : "Start Tunnel"))
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(!isConnected || isStartingOrStopping || isBlocked
+                                    ? Color.white.opacity(0.04)
+                                    : Color.hermesTeal.opacity(0.12))
+                                .foregroundColor(!isConnected || isStartingOrStopping || isBlocked
+                                    ? .white.opacity(0.3)
+                                    : .hermesTeal)
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(!isConnected || isStartingOrStopping || isBlocked
+                                            ? Color.clear
+                                            : Color.hermesTeal.opacity(0.2), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!isConnected || isStartingOrStopping || isBlocked)
+                        }
+                    }
+                    .padding(.vertical, 4)
                 }
 
                 // Info text
@@ -412,6 +525,9 @@ public struct SettingsView: View {
             return "Remote heartbeat passed."
             
         case .heartbeatFailed:
+            if viewModel.remoteHostStatus.robustnessState == .retryExhausted {
+                return "Remote heartbeat failed (max retries exhausted)."
+            }
             return "Remote heartbeat failed. Review diagnostics below."
             
         case .liveChecksDisabled:
@@ -463,6 +579,46 @@ public struct SettingsView: View {
         }
     }
 
+    private var tunnelStatusText: String {
+        switch viewModel.remoteHostStatus.tunnelState {
+        case .notConfigured:
+            return "Tunnel is not configured."
+        case .notStarted:
+            return "Tunnel has not been started."
+        case .preparing:
+            return "Preparing tunnel…"
+        case .starting:
+            return "Starting tunnel…"
+        case .active:
+            return "Tunnel is active."
+        case .degraded:
+            return "Tunnel is degraded."
+        case .failed:
+            return "Tunnel failed to start."
+        case .blocked:
+            return "Tunnel is blocked in this build."
+        case .stopping:
+            return "Stopping tunnel…"
+        case .stopped:
+            return "Tunnel stopped."
+        }
+    }
+
+    private var tunnelStatusColor: Color {
+        switch viewModel.remoteHostStatus.tunnelState {
+        case .notConfigured, .notStarted, .stopped:
+            return .white.opacity(0.45)
+        case .preparing, .starting, .stopping:
+            return .amber
+        case .active:
+            return .emerald
+        case .degraded:
+            return .amber
+        case .failed, .blocked:
+            return .rose
+        }
+    }
+
     private var remoteStatusColor: Color {
         switch remoteTestStatus {
         case .notConfigured:
@@ -488,6 +644,52 @@ public struct SettingsView: View {
         )
         Task {
             await viewModel.restartRemoteDaemon(settings: settings)
+            remoteTestStatus = viewModel.remoteHostStatus.connectionState
+        }
+    }
+
+    private func triggerStartTunnel() {
+        let settings = RemoteHostSettings(
+            host: remoteHost,
+            username: remoteUsername,
+            port: remotePort,
+            hermesCommand: remoteHermesCommand,
+            identityFilePath: remoteIdentityFilePath
+        )
+        let request = RemoteTunnelRequest(
+            localPort: 9119,
+            remoteHost: "127.0.0.1",
+            remotePort: 9119,
+            purpose: .runtimeAccess
+        )
+        Task {
+            await viewModel.startRemoteTunnel(settings: settings, request: request)
+        }
+    }
+
+    private func triggerStopTunnel() {
+        let settings = RemoteHostSettings(
+            host: remoteHost,
+            username: remoteUsername,
+            port: remotePort,
+            hermesCommand: remoteHermesCommand,
+            identityFilePath: remoteIdentityFilePath
+        )
+        Task {
+            await viewModel.stopRemoteTunnel(settings: settings)
+        }
+    }
+
+    private func triggerRetryConnection() {
+        let settings = RemoteHostSettings(
+            host: remoteHost,
+            username: remoteUsername,
+            port: remotePort,
+            hermesCommand: remoteHermesCommand,
+            identityFilePath: remoteIdentityFilePath
+        )
+        Task {
+            await viewModel.retryRemoteConnection(settings: settings)
             remoteTestStatus = viewModel.remoteHostStatus.connectionState
         }
     }

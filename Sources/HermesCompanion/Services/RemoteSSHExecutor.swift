@@ -10,10 +10,13 @@ public enum RemoteHermesCommand: String, Sendable, CaseIterable {
     case hermesStatus = "status"
     case hermesChat = "chat"
     case hermesRestart = "restart"
+    case tunnelStart = "tunnel-start"
+    case tunnelStop = "tunnel-stop"
+    case tunnelStatus = "tunnel-status"
 
     /// The actual argument array sent over SSH for this command.
     /// `hermesCommandBase` is the verified base command (default: "hermes").
-    public func remoteArguments(hermesCommandBase: String) -> [String] {
+    public func remoteArguments(hermesCommandBase: String, tunnelRequest: RemoteTunnelRequest? = nil) -> [String] {
         switch self {
         case .whichHermes:
             return ["which", verifiedBase(hermesCommandBase)]
@@ -25,6 +28,16 @@ public enum RemoteHermesCommand: String, Sendable, CaseIterable {
             return [verifiedBase(hermesCommandBase), "chat", "-q", "-", "-Q"]
         case .hermesRestart:
             return [verifiedBase(hermesCommandBase), "restart"]
+        case .tunnelStart:
+            if let req = tunnelRequest {
+                return ["-N", "-L", "\(req.localPort):\(req.remoteHost):\(req.remotePort)"]
+            } else {
+                return ["-N", "-L", "9119:127.0.0.1:9119"]
+            }
+        case .tunnelStop:
+            return ["tunnel-stop"]
+        case .tunnelStatus:
+            return ["tunnel-status"]
         }
     }
 
@@ -117,8 +130,9 @@ public final class RemoteSSHExecutor: RemoteCommandRunning, Sendable {
     public func execute(
         command: RemoteHermesCommand,
         settings: RemoteHostSettings,
-        timeout: TimeInterval = 8,
-        stdinData: Data? = nil
+        timeout: TimeInterval,
+        stdinData: Data?,
+        tunnelRequest: RemoteTunnelRequest?
     ) async -> RemoteSSHResult {
         let startTime = Date()
 
@@ -145,7 +159,7 @@ public final class RemoteSSHExecutor: RemoteCommandRunning, Sendable {
         }
 
         let hermesBase = sanitiseHermesCommand(settings.hermesCommand)
-        let remoteArgs = command.remoteArguments(hermesCommandBase: hermesBase)
+        let remoteArgs = command.remoteArguments(hermesCommandBase: hermesBase, tunnelRequest: tunnelRequest)
 
         // Build the SSH argument list.
         var sshArgs: [String] = []
@@ -183,8 +197,9 @@ public final class RemoteSSHExecutor: RemoteCommandRunning, Sendable {
     public func executeStreaming(
         command: RemoteHermesCommand,
         settings: RemoteHostSettings,
-        timeout: TimeInterval = 30,
-        stdinData: Data? = nil
+        timeout: TimeInterval,
+        stdinData: Data?,
+        tunnelRequest: RemoteTunnelRequest?
     ) -> AsyncStream<RemoteSSHStreamEvent> {
         return AsyncStream { continuation in
             guard settings.isValid else {
@@ -200,7 +215,7 @@ public final class RemoteSSHExecutor: RemoteCommandRunning, Sendable {
             }
             
             let hermesBase = sanitiseHermesCommand(settings.hermesCommand)
-            let remoteArgs = command.remoteArguments(hermesCommandBase: hermesBase)
+            let remoteArgs = command.remoteArguments(hermesCommandBase: hermesBase, tunnelRequest: tunnelRequest)
             
             var sshArgs: [String] = []
             sshArgs.append("-p")

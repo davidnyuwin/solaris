@@ -32,6 +32,12 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
     /// Structured remote background daemon state.
     public let daemonState: RemoteDaemonState
 
+    /// Structured remote background tunnel state.
+    public let tunnelState: RemoteTunnelState
+
+    /// Bounded robustness/retry state.
+    public let robustnessState: RemoteConnectionRobustnessState
+
     public init(
         hostLabel: String,
         hermesFound: Bool,
@@ -41,7 +47,9 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
         errorMessage: String?,
         preflightDiagnostic: SSHPreflightDiagnostic? = nil,
         connectionState: RemoteConnectionState = .notConfigured,
-        daemonState: RemoteDaemonState = .notChecked
+        daemonState: RemoteDaemonState = .notChecked,
+        tunnelState: RemoteTunnelState = .notStarted,
+        robustnessState: RemoteConnectionRobustnessState = .stable
     ) {
         self.hostLabel = hostLabel
         self.hermesFound = hermesFound
@@ -52,6 +60,8 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
         self.preflightDiagnostic = preflightDiagnostic
         self.connectionState = connectionState
         self.daemonState = daemonState
+        self.tunnelState = tunnelState
+        self.robustnessState = robustnessState
     }
 
     // MARK: - Connection states
@@ -85,7 +95,9 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
         errorMessage: nil,
         preflightDiagnostic: nil,
         connectionState: .notConfigured,
-        daemonState: .notChecked
+        daemonState: .notChecked,
+        tunnelState: .notConfigured,
+        robustnessState: .stable
     )
 }
 
@@ -113,4 +125,45 @@ public enum RemoteDaemonState: String, Sendable, Equatable, Codable {
     case restartInProgress
     case restartSucceeded
     case restartFailed
+}
+
+public enum RemoteTunnelState: String, Sendable, Equatable, Codable {
+    case notConfigured
+    case notStarted
+    case preparing
+    case starting
+    case active
+    case degraded
+    case failed
+    case blocked
+    case stopping
+    case stopped
+}
+
+public enum RemoteConnectionRobustnessState: String, Sendable, Equatable, Codable {
+    case stable
+    case degraded
+    case retryAvailable
+    case retrying
+    case retryExhausted
+    case blocked
+}
+
+public enum RemoteTunnelPurpose: String, Sendable, Equatable, Codable {
+    case runtimeAccess
+    case diagnostics
+}
+
+public struct RemoteTunnelRequest: Sendable, Equatable, Codable {
+    public let localPort: Int
+    public let remoteHost: String
+    public let remotePort: Int
+    public let purpose: RemoteTunnelPurpose
+
+    public init(localPort: Int, remoteHost: String, remotePort: Int, purpose: RemoteTunnelPurpose) {
+        self.localPort = localPort
+        self.remoteHost = remoteHost
+        self.remotePort = remotePort
+        self.purpose = purpose
+    }
 }

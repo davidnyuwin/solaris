@@ -896,6 +896,9 @@ public class HermesViewModel: ObservableObject {
     /// True while a remote connection test is in progress.
     @Published public var isTestingRemoteConnection: Bool = false
 
+    /// Current retry attempt count for bounded connection robustness.
+    @Published public var retryCount: Int = 0
+
     #if DEBUG
     internal var remoteSSHExecutor: any RemoteCommandRunning = RemoteSSHExecutor()
     internal var sshPreflightService = SSHPreflightService()
@@ -907,6 +910,7 @@ public class HermesViewModel: ObservableObject {
     /// Reset remote status (e.g. when settings change).
     public func clearRemoteStatus() {
         remoteHostStatus = .notConfigured
+        retryCount = 0
     }
 
     /// Run all three allowlisted remote checks sequentially and update
@@ -925,7 +929,9 @@ public class HermesViewModel: ObservableObject {
                 lastCheckedAt: Date(),
                 errorMessage: "Host cannot contain metacharacters or whitespace.",
                 connectionState: .localValidationFailed,
-                daemonState: .unavailable
+                daemonState: .unavailable,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: remoteHostStatus.robustnessState
             )
             isTestingRemoteConnection = false
             return
@@ -940,7 +946,9 @@ public class HermesViewModel: ObservableObject {
                 lastCheckedAt: Date(),
                 errorMessage: "Username cannot contain spaces, '@', or metacharacters.",
                 connectionState: .localValidationFailed,
-                daemonState: .unavailable
+                daemonState: .unavailable,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: remoteHostStatus.robustnessState
             )
             isTestingRemoteConnection = false
             return
@@ -955,7 +963,9 @@ public class HermesViewModel: ObservableObject {
                 lastCheckedAt: Date(),
                 errorMessage: "Port must be between 1 and 65535.",
                 connectionState: .localValidationFailed,
-                daemonState: .unavailable
+                daemonState: .unavailable,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: remoteHostStatus.robustnessState
             )
             isTestingRemoteConnection = false
             return
@@ -973,7 +983,9 @@ public class HermesViewModel: ObservableObject {
                 errorMessage: diagnostic.message,
                 preflightDiagnostic: diagnostic,
                 connectionState: .sshPreflightFailed,
-                daemonState: .unavailable
+                daemonState: .unavailable,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: remoteHostStatus.robustnessState
             )
             isTestingRemoteConnection = false
             return
@@ -1003,7 +1015,9 @@ public class HermesViewModel: ObservableObject {
                 errorMessage: "Live remote checks are disabled in this build.",
                 preflightDiagnostic: nil,
                 connectionState: .liveChecksDisabled,
-                daemonState: .unavailable
+                daemonState: .unavailable,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: remoteHostStatus.robustnessState
             )
             isTestingRemoteConnection = false
             return
@@ -1027,7 +1041,9 @@ public class HermesViewModel: ObservableObject {
             errorMessage: nil,
             preflightDiagnostic: passDiag,
             connectionState: .verifying,
-            daemonState: .checking
+            daemonState: .checking,
+            tunnelState: remoteHostStatus.tunnelState,
+            robustnessState: remoteHostStatus.robustnessState
         )
 
         // 1. which hermes
@@ -1045,6 +1061,10 @@ public class HermesViewModel: ObservableObject {
             } else {
                 reason = whichResult.timedOut ? "Timed out" : sanitiseSSHError(whichResult.stderr)
             }
+            
+            let isExhausted = retryCount >= 3
+            let finalRobustness: RemoteConnectionRobustnessState = isExhausted ? .retryExhausted : .retryAvailable
+            
             remoteHostStatus = RemoteHermesStatusSnapshot(
                 hostLabel: settings.displayLabel,
                 hermesFound: false,
@@ -1054,7 +1074,9 @@ public class HermesViewModel: ObservableObject {
                 errorMessage: reason,
                 preflightDiagnostic: passDiag,
                 connectionState: .heartbeatFailed,
-                daemonState: .unavailable
+                daemonState: .unavailable,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: finalRobustness
             )
             isTestingRemoteConnection = false
             return
@@ -1139,6 +1161,11 @@ public class HermesViewModel: ObservableObject {
             finalDaemonState = .unavailable
         }
 
+        let isExhausted = retryCount >= 3
+        let finalRobustness: RemoteConnectionRobustnessState = errorMessage == nil 
+            ? .stable 
+            : (isExhausted ? .retryExhausted : .retryAvailable)
+
         remoteHostStatus = RemoteHermesStatusSnapshot(
             hostLabel: settings.displayLabel,
             hermesFound: hermesFound,
@@ -1148,7 +1175,9 @@ public class HermesViewModel: ObservableObject {
             errorMessage: errorMessage,
             preflightDiagnostic: finalDiag ?? passDiag,
             connectionState: errorMessage == nil ? .heartbeatPassed : .heartbeatFailed,
-            daemonState: finalDaemonState
+            daemonState: finalDaemonState,
+            tunnelState: remoteHostStatus.tunnelState,
+            robustnessState: finalRobustness
         )
 
         isTestingRemoteConnection = false
@@ -1193,7 +1222,9 @@ public class HermesViewModel: ObservableObject {
                 errorMessage: "Live remote checks are disabled in this build.",
                 preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
                 connectionState: .liveChecksDisabled,
-                daemonState: .restartBlocked
+                daemonState: .restartBlocked,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: remoteHostStatus.robustnessState
             )
             return
             #else
@@ -1211,7 +1242,9 @@ public class HermesViewModel: ObservableObject {
             errorMessage: nil,
             preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
             connectionState: remoteHostStatus.connectionState,
-            daemonState: .restartInProgress
+            daemonState: .restartInProgress,
+            tunnelState: remoteHostStatus.tunnelState,
+            robustnessState: remoteHostStatus.robustnessState
         )
 
         // 4. Run command
@@ -1232,7 +1265,9 @@ public class HermesViewModel: ObservableObject {
                 errorMessage: nil,
                 preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
                 connectionState: .heartbeatPassed,
-                daemonState: .restartSucceeded
+                daemonState: .restartSucceeded,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: remoteHostStatus.robustnessState
             )
         } else {
             let errorMsg = result.stderr.isEmpty ? "Remote daemon restart failed." : result.stderr
@@ -1245,7 +1280,294 @@ public class HermesViewModel: ObservableObject {
                 errorMessage: errorMsg,
                 preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
                 connectionState: remoteHostStatus.connectionState,
-                daemonState: .restartFailed
+                daemonState: .restartFailed,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: remoteHostStatus.robustnessState
+            )
+        }
+    }
+
+    /// Triggers starting the remote runtime forwarding tunnel under safety gates.
+    @MainActor
+    public func startRemoteTunnel(settings: RemoteHostSettings, request: RemoteTunnelRequest) async {
+        guard settings.isValid else { return }
+
+        // Safety Precondition: connection must be established
+        guard remoteHostStatus.connectionState == .heartbeatPassed else {
+            return
+        }
+
+        let isMockMode = (UserDefaults.standard.string(forKey: "HermesServiceMode") == HermesServiceMode.mock.rawValue)
+
+        let runner: any RemoteCommandRunning
+        if isMockMode {
+            let mockRunner = MockRemoteCommandRunner()
+            if settings.host == "tunnel-fail.local" {
+                mockRunner.shouldFail = true
+                mockRunner.customStderr = "Remote tunnel start failed."
+            } else if settings.host == "tunnel-timeout.local" {
+                mockRunner.shouldTimeout = true
+            }
+            runner = mockRunner
+        } else {
+            #if !DEBUG
+            // Hard rule: No live remote command tunnel operations in release builds.
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: "Live remote tunnels are disabled in this build.",
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: .liveChecksDisabled,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: .blocked,
+                robustnessState: .blocked
+            )
+            return
+            #else
+            runner = self.remoteSSHExecutor
+            #endif
+        }
+
+        // Set state to starting
+        remoteHostStatus = RemoteHermesStatusSnapshot(
+            hostLabel: settings.displayLabel,
+            hermesFound: remoteHostStatus.hermesFound,
+            hermesVersion: remoteHostStatus.hermesVersion,
+            statusSummary: remoteHostStatus.statusSummary,
+            lastCheckedAt: Date(),
+            errorMessage: nil,
+            preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+            connectionState: remoteHostStatus.connectionState,
+            daemonState: remoteHostStatus.daemonState,
+            tunnelState: .starting,
+            robustnessState: remoteHostStatus.robustnessState
+        )
+
+        // Validate local and remote ports
+        guard request.localPort > 1024 && request.localPort <= 65535,
+              request.remotePort > 0 && request.remotePort <= 65535 else {
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: "Invalid tunnel port configuration.",
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: remoteHostStatus.connectionState,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: .failed,
+                robustnessState: remoteHostStatus.robustnessState
+            )
+            return
+        }
+
+        // Run tunnel start command
+        let result = await runner.execute(
+            command: .tunnelStart,
+            settings: settings,
+            timeout: 10,
+            stdinData: nil,
+            tunnelRequest: request
+        )
+
+        if result.exitCode == 0 {
+            let isDegraded = settings.host == "tunnel-degraded.local"
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: nil,
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: remoteHostStatus.connectionState,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: isDegraded ? .degraded : .active,
+                robustnessState: remoteHostStatus.robustnessState
+            )
+        } else {
+            let errMsg = result.stderr.isEmpty ? "Tunnel start failed." : result.stderr
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: errMsg,
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: remoteHostStatus.connectionState,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: .failed,
+                robustnessState: remoteHostStatus.robustnessState
+            )
+        }
+    }
+
+    /// Triggers stopping the remote runtime forwarding tunnel under safety gates.
+    @MainActor
+    public func stopRemoteTunnel(settings: RemoteHostSettings) async {
+        guard settings.isValid else { return }
+
+        let isMockMode = (UserDefaults.standard.string(forKey: "HermesServiceMode") == HermesServiceMode.mock.rawValue)
+
+        let runner: any RemoteCommandRunning
+        if isMockMode {
+            let mockRunner = MockRemoteCommandRunner()
+            if settings.host == "tunnel-stop-fail.local" {
+                mockRunner.shouldFail = true
+                mockRunner.customStderr = "Remote tunnel stop failed."
+            }
+            runner = mockRunner
+        } else {
+            #if !DEBUG
+            // Hard rule: No live remote command tunnel operations in release builds.
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: "Live remote tunnels are disabled in this build.",
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: .liveChecksDisabled,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: .blocked,
+                robustnessState: .blocked
+            )
+            return
+            #else
+            runner = self.remoteSSHExecutor
+            #endif
+        }
+
+        // Set state to stopping
+        remoteHostStatus = RemoteHermesStatusSnapshot(
+            hostLabel: settings.displayLabel,
+            hermesFound: remoteHostStatus.hermesFound,
+            hermesVersion: remoteHostStatus.hermesVersion,
+            statusSummary: remoteHostStatus.statusSummary,
+            lastCheckedAt: Date(),
+            errorMessage: nil,
+            preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+            connectionState: remoteHostStatus.connectionState,
+            daemonState: remoteHostStatus.daemonState,
+            tunnelState: .stopping,
+            robustnessState: remoteHostStatus.robustnessState
+        )
+
+        let result = await runner.execute(
+            command: .tunnelStop,
+            settings: settings,
+            timeout: 5,
+            stdinData: nil,
+            tunnelRequest: nil
+        )
+
+        if result.exitCode == 0 {
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: nil,
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: remoteHostStatus.connectionState,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: .stopped,
+                robustnessState: remoteHostStatus.robustnessState
+            )
+        } else {
+            let errMsg = result.stderr.isEmpty ? "Tunnel stop failed." : result.stderr
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: errMsg,
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: remoteHostStatus.connectionState,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: .failed,
+                robustnessState: remoteHostStatus.robustnessState
+            )
+        }
+    }
+
+    /// Explicitly retries the remote host connection check with bounded retry counts.
+    @MainActor
+    public func retryRemoteConnection(settings: RemoteHostSettings) async {
+        guard retryCount < 3 else {
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: "Maximum retry attempts exhausted.",
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: .heartbeatFailed,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: .retryExhausted
+            )
+            return
+        }
+
+        retryCount += 1
+        remoteHostStatus = RemoteHermesStatusSnapshot(
+            hostLabel: settings.displayLabel,
+            hermesFound: remoteHostStatus.hermesFound,
+            hermesVersion: remoteHostStatus.hermesVersion,
+            statusSummary: remoteHostStatus.statusSummary,
+            lastCheckedAt: Date(),
+            errorMessage: nil,
+            preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+            connectionState: .verifying,
+            daemonState: remoteHostStatus.daemonState,
+            tunnelState: remoteHostStatus.tunnelState,
+            robustnessState: .retrying
+        )
+
+        // Bounded delay: wait 1 second
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+
+        await testRemoteConnection(settings: settings)
+
+        if remoteHostStatus.connectionState == .heartbeatPassed {
+            retryCount = 0
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: nil,
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: remoteHostStatus.connectionState,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: .stable
+            )
+        } else {
+            let isExhausted = retryCount >= 3
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: "Retry attempt \(retryCount) of 3 failed.",
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: remoteHostStatus.connectionState,
+                daemonState: remoteHostStatus.daemonState,
+                tunnelState: remoteHostStatus.tunnelState,
+                robustnessState: isExhausted ? .retryExhausted : .retryAvailable
             )
         }
     }

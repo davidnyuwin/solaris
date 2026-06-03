@@ -13,11 +13,15 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
         command: RemoteHermesCommand,
         settings: RemoteHostSettings,
         timeout: TimeInterval,
-        stdinData: Data?
+        stdinData: Data?,
+        tunnelRequest: RemoteTunnelRequest?
     ) async -> RemoteSSHResult {
         let duration: TimeInterval = 0.05
         
-        let localTimeout = shouldTimeout || (command == .hermesStatus && settings.host == "daemon-timeout.local")
+        let localTimeout = shouldTimeout || 
+                           (command == .hermesStatus && settings.host == "daemon-timeout.local") ||
+                           (command == .tunnelStart && settings.host == "tunnel-timeout.local") ||
+                           (command == .tunnelStatus && settings.host == "tunnel-timeout.local")
         if localTimeout {
             return RemoteSSHResult(
                 command: command,
@@ -31,7 +35,9 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
         
         let localFail = shouldFail || 
                         (command == .hermesStatus && settings.host == "daemon-unavailable.local") ||
-                        (command == .hermesRestart && settings.host == "restart-fail.local")
+                        (command == .hermesRestart && settings.host == "restart-fail.local") ||
+                        (command == .tunnelStart && settings.host == "tunnel-fail.local") ||
+                        (command == .tunnelStop && settings.host == "tunnel-stop-fail.local")
         if localFail {
             return RemoteSSHResult(
                 command: command,
@@ -64,6 +70,20 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
                 stdout = "Mock Chat Response"
             case .hermesRestart:
                 stdout = "Status: OK"
+            case .tunnelStart:
+                if settings.host == "tunnel-active.local" {
+                    stdout = "Tunnel already active"
+                } else {
+                    stdout = "Tunnel started successfully"
+                }
+            case .tunnelStop:
+                stdout = "Tunnel stopped successfully"
+            case .tunnelStatus:
+                if settings.host == "tunnel-degraded.local" {
+                    stdout = "Status: Degraded"
+                } else {
+                    stdout = "Status: Active"
+                }
             }
         }
         
@@ -81,10 +101,14 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
         command: RemoteHermesCommand,
         settings: RemoteHostSettings,
         timeout: TimeInterval,
-        stdinData: Data?
+        stdinData: Data?,
+        tunnelRequest: RemoteTunnelRequest?
     ) -> AsyncStream<RemoteSSHStreamEvent> {
         return AsyncStream { continuation in
-            let localTimeout = shouldTimeout || (command == .hermesStatus && settings.host == "daemon-timeout.local")
+            let localTimeout = shouldTimeout || 
+                               (command == .hermesStatus && settings.host == "daemon-timeout.local") ||
+                               (command == .tunnelStart && settings.host == "tunnel-timeout.local") ||
+                               (command == .tunnelStatus && settings.host == "tunnel-timeout.local")
             if localTimeout {
                 continuation.yield(.timedOut)
                 continuation.finish()
@@ -93,7 +117,9 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
             
             let localFail = shouldFail || 
                             (command == .hermesStatus && settings.host == "daemon-unavailable.local") ||
-                            (command == .hermesRestart && settings.host == "restart-fail.local")
+                            (command == .hermesRestart && settings.host == "restart-fail.local") ||
+                            (command == .tunnelStart && settings.host == "tunnel-fail.local") ||
+                            (command == .tunnelStop && settings.host == "tunnel-stop-fail.local")
             if localFail {
                 continuation.yield(.failed(customStderr ?? "Mock connection failed or command error"))
                 continuation.finish()
@@ -121,6 +147,20 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
                     stdout = "Mock Chat Streaming Response\n"
                 case .hermesRestart:
                     stdout = "Status: OK\n"
+                case .tunnelStart:
+                    if settings.host == "tunnel-active.local" {
+                        stdout = "Tunnel already active\n"
+                    } else {
+                        stdout = "Tunnel started successfully\n"
+                    }
+                case .tunnelStop:
+                    stdout = "Tunnel stopped successfully\n"
+                case .tunnelStatus:
+                    if settings.host == "tunnel-degraded.local" {
+                        stdout = "Status: Degraded\n"
+                    } else {
+                        stdout = "Status: Active\n"
+                    }
                 }
             }
             
