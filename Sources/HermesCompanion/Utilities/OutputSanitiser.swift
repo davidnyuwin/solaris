@@ -195,14 +195,15 @@ public final class StreamingOutputSanitiser: @unchecked Sendable {
     private func findCompleteUTF8Prefix(in data: Data) -> (complete: Data, remaining: Data) {
         guard !data.isEmpty else { return (data, Data()) }
         
+        let baseData = Data(data)
         let maxUTF8Length = 4
-        let lastBytesCount = min(data.count, maxUTF8Length)
-        let startIndex = data.count - lastBytesCount
+        let lastBytesCount = min(baseData.count, maxUTF8Length)
+        let startIndex = baseData.count - lastBytesCount
         
-        for i in (startIndex..<data.count).reversed() {
-            let byte = data[i]
+        for i in (startIndex..<baseData.count).reversed() {
+            let byte = baseData[i]
             if byte < 0x80 {
-                return (data.prefix(i + 1), data.suffix(data.count - (i + 1)))
+                return (Data(baseData.prefix(i + 1)), Data(baseData.suffix(baseData.count - (i + 1))))
             } else if byte >= 0xC0 {
                 let expectedLen: Int
                 if (byte & 0xE0) == 0xC0 {
@@ -212,19 +213,19 @@ public final class StreamingOutputSanitiser: @unchecked Sendable {
                 } else if (byte & 0xF0) == 0xF0 {
                     expectedLen = 4
                 } else {
-                    return (data.prefix(i + 1), data.suffix(data.count - (i + 1)))
+                    return (Data(baseData.prefix(i + 1)), Data(baseData.suffix(baseData.count - (i + 1))))
                 }
                 
-                let actualLen = data.count - i
+                let actualLen = baseData.count - i
                 if actualLen >= expectedLen {
-                    return (data, Data())
+                    return (baseData, Data())
                 } else {
-                    return (data.prefix(i), data.suffix(actualLen))
+                    return (Data(baseData.prefix(i)), Data(baseData.suffix(actualLen)))
                 }
             }
         }
         
-        return (data, Data())
+        return (baseData, Data())
     }
 }
 
