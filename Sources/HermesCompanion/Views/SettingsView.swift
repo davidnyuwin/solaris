@@ -83,6 +83,9 @@ public struct SettingsView: View {
         .onAppear {
             remoteTestStatus = viewModel.remoteHostStatus.connectionState
         }
+        .onChange(of: viewModel.remoteHostStatus) { oldValue, newValue in
+            remoteTestStatus = newValue.connectionState
+        }
     }
     
     // MARK: - Sections
@@ -299,6 +302,67 @@ public struct SettingsView: View {
                         .lineLimit(2)
                 }
 
+                if remoteTestStatus != .notConfigured {
+                    Divider()
+                        .background(Color.white.opacity(0.06))
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Daemon Status")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white.opacity(0.6))
+                            Text(daemonStatusText)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(daemonStatusColor)
+                        }
+
+                        Spacer()
+
+                        let showRestart = viewModel.remoteHostStatus.daemonState == .stopped ||
+                                          viewModel.remoteHostStatus.daemonState == .unhealthy ||
+                                          viewModel.remoteHostStatus.daemonState == .restartFailed ||
+                                          viewModel.remoteHostStatus.daemonState == .restartSucceeded
+
+                        let isRestarting = viewModel.remoteHostStatus.daemonState == .restartInProgress
+                        let isBlocked = viewModel.remoteHostStatus.daemonState == .restartBlocked
+
+                        if showRestart || isRestarting || isBlocked {
+                            Button(action: triggerDaemonRestart) {
+                                HStack(spacing: 6) {
+                                    if isRestarting {
+                                        ProgressView()
+                                            .scaleEffect(0.4)
+                                            .frame(width: 10, height: 10)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 9))
+                                    }
+                                    Text(isRestarting ? "Restarting..." : (isBlocked ? "Restart Blocked" : "Restart Daemon"))
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(isRestarting || isBlocked
+                                    ? Color.white.opacity(0.04)
+                                    : Color.rose.opacity(0.12))
+                                .foregroundColor(isRestarting || isBlocked
+                                    ? .white.opacity(0.3)
+                                    : .rose)
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(isRestarting || isBlocked
+                                            ? Color.clear
+                                            : Color.rose.opacity(0.2), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isRestarting || isBlocked)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
                 // Info text
                 Text("Uses your macOS SSH agent for authentication. No passwords or keys are stored in Solaris.")
                     .font(.system(size: 9.5))
@@ -355,6 +419,50 @@ public struct SettingsView: View {
         }
     }
 
+    private var daemonStatusText: String {
+        switch viewModel.remoteHostStatus.daemonState {
+        case .unknown:
+            return "Daemon status has not been checked yet."
+        case .notChecked:
+            return "Daemon status has not been checked yet."
+        case .checking:
+            return "Checking remote daemon status…"
+        case .running:
+            return "Remote daemon is running."
+        case .stopped:
+            return "Remote daemon is stopped."
+        case .unhealthy:
+            return "Remote daemon is unhealthy."
+        case .unavailable:
+            return "Remote daemon is unavailable."
+        case .restartAvailable:
+            return "Restart is available."
+        case .restartBlocked:
+            return "Restart is blocked in this build."
+        case .restartInProgress:
+            return "Restarting remote daemon…"
+        case .restartSucceeded:
+            return "Remote daemon restarted successfully."
+        case .restartFailed:
+            return "Remote daemon restart failed."
+        }
+    }
+
+    private var daemonStatusColor: Color {
+        switch viewModel.remoteHostStatus.daemonState {
+        case .unknown, .notChecked:
+            return .white.opacity(0.45)
+        case .checking, .restartInProgress:
+            return .amber
+        case .running, .restartSucceeded:
+            return .emerald
+        case .stopped, .unhealthy, .restartFailed, .unavailable, .restartBlocked:
+            return .rose
+        case .restartAvailable:
+            return .hermesTeal
+        }
+    }
+
     private var remoteStatusColor: Color {
         switch remoteTestStatus {
         case .notConfigured:
@@ -367,6 +475,20 @@ public struct SettingsView: View {
             return .emerald
         case .localValidationFailed, .sshPreflightFailed, .heartbeatFailed, .liveChecksDisabled:
             return .rose
+        }
+    }
+
+    private func triggerDaemonRestart() {
+        let settings = RemoteHostSettings(
+            host: remoteHost,
+            username: remoteUsername,
+            port: remotePort,
+            hermesCommand: remoteHermesCommand,
+            identityFilePath: remoteIdentityFilePath
+        )
+        Task {
+            await viewModel.restartRemoteDaemon(settings: settings)
+            remoteTestStatus = viewModel.remoteHostStatus.connectionState
         }
     }
 

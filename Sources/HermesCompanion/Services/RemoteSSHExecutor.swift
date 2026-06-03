@@ -9,6 +9,7 @@ public enum RemoteHermesCommand: String, Sendable, CaseIterable {
     case hermesVersion = "version"
     case hermesStatus = "status"
     case hermesChat = "chat"
+    case hermesRestart = "restart"
 
     /// The actual argument array sent over SSH for this command.
     /// `hermesCommandBase` is the verified base command (default: "hermes").
@@ -22,6 +23,8 @@ public enum RemoteHermesCommand: String, Sendable, CaseIterable {
             return [verifiedBase(hermesCommandBase), "status"]
         case .hermesChat:
             return [verifiedBase(hermesCommandBase), "chat", "-q", "-", "-Q"]
+        case .hermesRestart:
+            return [verifiedBase(hermesCommandBase), "restart"]
         }
     }
 

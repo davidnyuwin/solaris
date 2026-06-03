@@ -29,6 +29,9 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
     /// Structured remote readiness/connection state machine state.
     public let connectionState: RemoteConnectionState
 
+    /// Structured remote background daemon state.
+    public let daemonState: RemoteDaemonState
+
     public init(
         hostLabel: String,
         hermesFound: Bool,
@@ -37,7 +40,8 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
         lastCheckedAt: Date,
         errorMessage: String?,
         preflightDiagnostic: SSHPreflightDiagnostic? = nil,
-        connectionState: RemoteConnectionState = .notConfigured
+        connectionState: RemoteConnectionState = .notConfigured,
+        daemonState: RemoteDaemonState = .notChecked
     ) {
         self.hostLabel = hostLabel
         self.hermesFound = hermesFound
@@ -47,6 +51,7 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
         self.errorMessage = errorMessage
         self.preflightDiagnostic = preflightDiagnostic
         self.connectionState = connectionState
+        self.daemonState = daemonState
     }
 
     // MARK: - Connection states
@@ -79,7 +84,8 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
         lastCheckedAt: Date(),
         errorMessage: nil,
         preflightDiagnostic: nil,
-        connectionState: .notConfigured
+        connectionState: .notConfigured,
+        daemonState: .notChecked
     )
 }
 
@@ -92,4 +98,19 @@ public enum RemoteConnectionState: String, Sendable, Equatable, Codable {
     case heartbeatPassed
     case heartbeatFailed
     case liveChecksDisabled
+}
+
+public enum RemoteDaemonState: String, Sendable, Equatable, Codable {
+    case unknown
+    case notChecked
+    case checking
+    case running
+    case stopped
+    case unhealthy
+    case unavailable
+    case restartAvailable
+    case restartBlocked
+    case restartInProgress
+    case restartSucceeded
+    case restartFailed
 }

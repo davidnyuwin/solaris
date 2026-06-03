@@ -924,7 +924,8 @@ public class HermesViewModel: ObservableObject {
                 statusSummary: nil,
                 lastCheckedAt: Date(),
                 errorMessage: "Host cannot contain metacharacters or whitespace.",
-                connectionState: .localValidationFailed
+                connectionState: .localValidationFailed,
+                daemonState: .unavailable
             )
             isTestingRemoteConnection = false
             return
@@ -938,7 +939,8 @@ public class HermesViewModel: ObservableObject {
                 statusSummary: nil,
                 lastCheckedAt: Date(),
                 errorMessage: "Username cannot contain spaces, '@', or metacharacters.",
-                connectionState: .localValidationFailed
+                connectionState: .localValidationFailed,
+                daemonState: .unavailable
             )
             isTestingRemoteConnection = false
             return
@@ -952,7 +954,8 @@ public class HermesViewModel: ObservableObject {
                 statusSummary: nil,
                 lastCheckedAt: Date(),
                 errorMessage: "Port must be between 1 and 65535.",
-                connectionState: .localValidationFailed
+                connectionState: .localValidationFailed,
+                daemonState: .unavailable
             )
             isTestingRemoteConnection = false
             return
@@ -969,7 +972,8 @@ public class HermesViewModel: ObservableObject {
                 lastCheckedAt: Date(),
                 errorMessage: diagnostic.message,
                 preflightDiagnostic: diagnostic,
-                connectionState: .sshPreflightFailed
+                connectionState: .sshPreflightFailed,
+                daemonState: .unavailable
             )
             isTestingRemoteConnection = false
             return
@@ -998,7 +1002,8 @@ public class HermesViewModel: ObservableObject {
                 lastCheckedAt: Date(),
                 errorMessage: "Live remote checks are disabled in this build.",
                 preflightDiagnostic: nil,
-                connectionState: .liveChecksDisabled
+                connectionState: .liveChecksDisabled,
+                daemonState: .unavailable
             )
             isTestingRemoteConnection = false
             return
@@ -1021,7 +1026,8 @@ public class HermesViewModel: ObservableObject {
             lastCheckedAt: Date(),
             errorMessage: nil,
             preflightDiagnostic: passDiag,
-            connectionState: .verifying
+            connectionState: .verifying,
+            daemonState: .checking
         )
 
         // 1. which hermes
@@ -1047,7 +1053,8 @@ public class HermesViewModel: ObservableObject {
                 lastCheckedAt: Date(),
                 errorMessage: reason,
                 preflightDiagnostic: passDiag,
-                connectionState: .heartbeatFailed
+                connectionState: .heartbeatFailed,
+                daemonState: .unavailable
             )
             isTestingRemoteConnection = false
             return
@@ -1113,6 +1120,25 @@ public class HermesViewModel: ObservableObject {
             message: "Your local SSH keys and agent are ready for connection."
         ) : nil
 
+        let finalDaemonState: RemoteDaemonState
+        if errorMessage == nil {
+            if let summary = statusSummary {
+                if summary.contains("STOPPED") {
+                    finalDaemonState = .stopped
+                } else if summary.contains("UNHEALTHY") {
+                    finalDaemonState = .unhealthy
+                } else if summary.contains("OK") {
+                    finalDaemonState = .running
+                } else {
+                    finalDaemonState = .unknown
+                }
+            } else {
+                finalDaemonState = .unknown
+            }
+        } else {
+            finalDaemonState = .unavailable
+        }
+
         remoteHostStatus = RemoteHermesStatusSnapshot(
             hostLabel: settings.displayLabel,
             hermesFound: hermesFound,
@@ -1121,10 +1147,107 @@ public class HermesViewModel: ObservableObject {
             lastCheckedAt: Date(),
             errorMessage: errorMessage,
             preflightDiagnostic: finalDiag ?? passDiag,
-            connectionState: errorMessage == nil ? .heartbeatPassed : .heartbeatFailed
+            connectionState: errorMessage == nil ? .heartbeatPassed : .heartbeatFailed,
+            daemonState: finalDaemonState
         )
 
         isTestingRemoteConnection = false
+    }
+
+    /// Triggers an allowlisted restart command for the remote daemon under safety gates.
+    @MainActor
+    public func restartRemoteDaemon(settings: RemoteHostSettings) async {
+        guard settings.isValid else { return }
+
+        // 1. Safety precondition checks
+        if let diagnostic = remoteHostStatus.preflightDiagnostic, diagnostic.status == .fail {
+            // Cannot run if preflight failed
+            return
+        }
+
+        if remoteHostStatus.connectionState == .sshPreflightFailed || remoteHostStatus.connectionState == .localValidationFailed {
+            // Cannot run if preflight/validation failed
+            return
+        }
+
+        let isMockMode = (UserDefaults.standard.string(forKey: "HermesServiceMode") == HermesServiceMode.mock.rawValue)
+
+        // 2. Resolve runner and apply release gates
+        let runner: any RemoteCommandRunning
+        if isMockMode {
+            let mockRunner = MockRemoteCommandRunner()
+            if settings.host == "restart-fail.local" {
+                mockRunner.shouldFail = true
+                mockRunner.customStderr = "Remote daemon restart failed."
+            }
+            runner = mockRunner
+        } else {
+            #if !DEBUG
+            // Hard rule: No live remote command restart in release builds.
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: "Live remote checks are disabled in this build.",
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: .liveChecksDisabled,
+                daemonState: .restartBlocked
+            )
+            return
+            #else
+            runner = self.remoteSSHExecutor
+            #endif
+        }
+
+        // 3. Set state to inProgress
+        remoteHostStatus = RemoteHermesStatusSnapshot(
+            hostLabel: settings.displayLabel,
+            hermesFound: remoteHostStatus.hermesFound,
+            hermesVersion: remoteHostStatus.hermesVersion,
+            statusSummary: remoteHostStatus.statusSummary,
+            lastCheckedAt: Date(),
+            errorMessage: nil,
+            preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+            connectionState: remoteHostStatus.connectionState,
+            daemonState: .restartInProgress
+        )
+
+        // 4. Run command
+        let result = await runner.execute(
+            command: .hermesRestart,
+            settings: settings,
+            timeout: 10,
+            stdinData: nil
+        )
+
+        if result.exitCode == 0 {
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: "Status: OK",
+                lastCheckedAt: Date(),
+                errorMessage: nil,
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: .heartbeatPassed,
+                daemonState: .restartSucceeded
+            )
+        } else {
+            let errorMsg = result.stderr.isEmpty ? "Remote daemon restart failed." : result.stderr
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: remoteHostStatus.hermesFound,
+                hermesVersion: remoteHostStatus.hermesVersion,
+                statusSummary: remoteHostStatus.statusSummary,
+                lastCheckedAt: Date(),
+                errorMessage: errorMsg,
+                preflightDiagnostic: remoteHostStatus.preflightDiagnostic,
+                connectionState: remoteHostStatus.connectionState,
+                daemonState: .restartFailed
+            )
+        }
     }
 
     /// Redact common SSH error patterns so we never show raw hostnames,

@@ -17,7 +17,8 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
     ) async -> RemoteSSHResult {
         let duration: TimeInterval = 0.05
         
-        if shouldTimeout {
+        let localTimeout = shouldTimeout || (command == .hermesStatus && settings.host == "daemon-timeout.local")
+        if localTimeout {
             return RemoteSSHResult(
                 command: command,
                 exitCode: -1,
@@ -28,7 +29,10 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
             )
         }
         
-        if shouldFail {
+        let localFail = shouldFail || 
+                        (command == .hermesStatus && settings.host == "daemon-unavailable.local") ||
+                        (command == .hermesRestart && settings.host == "restart-fail.local")
+        if localFail {
             return RemoteSSHResult(
                 command: command,
                 exitCode: exitCode != 0 ? exitCode : 1,
@@ -49,9 +53,17 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
             case .hermesVersion:
                 stdout = "hermes-agent 1.2.3"
             case .hermesStatus:
-                stdout = "Status: OK"
+                if settings.host == "daemon-stopped.local" {
+                    stdout = "Status: STOPPED"
+                } else if settings.host == "daemon-unhealthy.local" {
+                    stdout = "Status: UNHEALTHY"
+                } else {
+                    stdout = "Status: OK"
+                }
             case .hermesChat:
                 stdout = "Mock Chat Response"
+            case .hermesRestart:
+                stdout = "Status: OK"
             }
         }
         
@@ -72,12 +84,17 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
         stdinData: Data?
     ) -> AsyncStream<RemoteSSHStreamEvent> {
         return AsyncStream { continuation in
-            if shouldTimeout {
+            let localTimeout = shouldTimeout || (command == .hermesStatus && settings.host == "daemon-timeout.local")
+            if localTimeout {
                 continuation.yield(.timedOut)
                 continuation.finish()
                 return
             }
-            if shouldFail {
+            
+            let localFail = shouldFail || 
+                            (command == .hermesStatus && settings.host == "daemon-unavailable.local") ||
+                            (command == .hermesRestart && settings.host == "restart-fail.local")
+            if localFail {
                 continuation.yield(.failed(customStderr ?? "Mock connection failed or command error"))
                 continuation.finish()
                 return
@@ -93,9 +110,17 @@ public final class MockRemoteCommandRunner: RemoteCommandRunning, @unchecked Sen
                 case .hermesVersion:
                     stdout = "hermes-agent 1.2.3\n"
                 case .hermesStatus:
-                    stdout = "Status: OK\n"
+                    if settings.host == "daemon-stopped.local" {
+                        stdout = "Status: STOPPED\n"
+                    } else if settings.host == "daemon-unhealthy.local" {
+                        stdout = "Status: UNHEALTHY\n"
+                    } else {
+                        stdout = "Status: OK\n"
+                    }
                 case .hermesChat:
                     stdout = "Mock Chat Streaming Response\n"
+                case .hermesRestart:
+                    stdout = "Status: OK\n"
                 }
             }
             
