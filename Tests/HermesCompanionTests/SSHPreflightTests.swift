@@ -42,7 +42,7 @@ final class SSHPreflightTests: XCTestCase {
     func testPreflightNoIdentityAgentAvailable() async throws {
         let sshAddPath = try createMockSSHAdd(
             exitCode: 0,
-            stdout: "2048 SHA256:abc /Users/dnguyen/.ssh/id_rsa (RSA)",
+            stdout: "2048 SHA256:abc /Users/developer/.ssh/id_rsa (RSA)",
             stderr: ""
         )
         let service = SSHPreflightService(sshAddPath: sshAddPath)

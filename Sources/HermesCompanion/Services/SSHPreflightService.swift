@@ -22,7 +22,7 @@ public final class SSHPreflightService: Sendable {
         
         // 1. If key is specified, validate path safety, file existence, and readability.
         if !keyPath.isEmpty {
-            let forbidden = CharacterSet.controlCharacters.union(CharacterSet(charactersIn: " ;|&`$<>()[]{}#'\"!\\\\"))
+            let forbidden = CharacterSet.controlCharacters.union(CharacterSet(charactersIn: ";|&`$<>()[]{}#'\"!\\\\"))
             guard keyPath.rangeOfCharacter(from: forbidden) == nil else {
                 return SSHPreflightDiagnostic(
                     status: .fail,

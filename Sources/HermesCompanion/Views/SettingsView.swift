@@ -325,13 +325,27 @@ public struct SettingsView: View {
     }
 
     private var remoteStatusText: String {
+        let isMockMode = (UserDefaults.standard.string(forKey: "HermesServiceMode") == HermesServiceMode.mock.rawValue)
+        
+        if let diagnostic = viewModel.remoteHostStatus.preflightDiagnostic {
+            if diagnostic.status == .fail {
+                return "SSH preflight must pass before connection verification can run."
+            }
+        }
+        
         switch remoteTestStatus {
         case .notConfigured:
-            return "Configure a host to test the SSH connection."
+            if remoteHost.isEmpty {
+                return "Configure a host to test the SSH connection."
+            }
+            if viewModel.remoteHostStatus.preflightDiagnostic == nil {
+                return "Remote Hermes runtime was not checked yet."
+            }
+            return "Connection verification is ready."
         case .testing:
-            return "Running allowlisted checks on remote host..."
+            return isMockMode ? "Running mock connection checks..." : "Running allowlisted checks on remote host..."
         case .connected:
-            return "Connected. Remote Hermes is reachable."
+            return isMockMode ? "Mock remote command completed successfully." : "Connected. Remote Hermes is reachable."
         case .failed(let reason):
             return reason
         }

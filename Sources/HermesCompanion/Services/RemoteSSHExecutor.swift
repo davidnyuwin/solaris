@@ -69,7 +69,7 @@ public enum RemoteSSHStreamEvent: Sendable, Equatable {
 /// - Command allowlist enforced at the enum level.
 /// - Custom `hermesCommandBase` is sanitised for shell metacharacters.
 /// - `BatchMode=yes` prevents password prompting (relies on ssh-agent).
-public final class RemoteSSHExecutor: Sendable {
+public final class RemoteSSHExecutor: RemoteCommandRunning, Sendable {
 
     public enum ExecutorError: Error, LocalizedError, Equatable {
         case invalidSettings

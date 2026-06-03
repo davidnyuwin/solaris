@@ -897,10 +897,10 @@ public class HermesViewModel: ObservableObject {
     @Published public var isTestingRemoteConnection: Bool = false
 
     #if DEBUG
-    internal var remoteSSHExecutor = RemoteSSHExecutor()
+    internal var remoteSSHExecutor: any RemoteCommandRunning = RemoteSSHExecutor()
     internal var sshPreflightService = SSHPreflightService()
     #else
-    private let remoteSSHExecutor = RemoteSSHExecutor()
+    private let remoteSSHExecutor: any RemoteCommandRunning = RemoteSSHExecutor()
     private let sshPreflightService = SSHPreflightService()
     #endif
 
@@ -971,6 +971,37 @@ public class HermesViewModel: ObservableObject {
             return
         }
 
+        let isMockMode = (UserDefaults.standard.string(forKey: "HermesServiceMode") == HermesServiceMode.mock.rawValue)
+
+        let runner: any RemoteCommandRunning
+        if isMockMode {
+            let mockRunner = MockRemoteCommandRunner()
+            if settings.host == "fail.local" {
+                mockRunner.shouldFail = true
+                mockRunner.customStderr = "Remote command check failed. Review the diagnostic details below."
+            } else if settings.host == "timeout.local" {
+                mockRunner.shouldTimeout = true
+            }
+            runner = mockRunner
+        } else {
+            #if !DEBUG
+            // In release builds, live remote connection verification is disabled.
+            remoteHostStatus = RemoteHermesStatusSnapshot(
+                hostLabel: settings.displayLabel,
+                hermesFound: false,
+                hermesVersion: nil,
+                statusSummary: nil,
+                lastCheckedAt: Date(),
+                errorMessage: "Live remote checks are disabled in this build.",
+                preflightDiagnostic: nil
+            )
+            isTestingRemoteConnection = false
+            return
+            #else
+            runner = self.remoteSSHExecutor
+            #endif
+        }
+
         let passDiag = SSHPreflightDiagnostic(
             status: .pass,
             title: "Preflight Passed",
@@ -988,24 +1019,28 @@ public class HermesViewModel: ObservableObject {
         )
 
         // 1. which hermes
-        let whichResult = await remoteSSHExecutor.execute(
-            command: .whichHermes, settings: settings
+        let whichResult = await runner.execute(
+            command: .whichHermes, settings: settings, timeout: 8, stdinData: nil
         )
 
         // Early-exit if the SSH transport itself failed (exit 255) or timed out.
         // This avoids 2 redundant failing SSH attempts against an unreachable host.
         let sshTransportFailed = whichResult.exitCode == 255 || whichResult.timedOut
         if sshTransportFailed {
-            let reason = whichResult.timedOut
-                ? "Timed out"
-                : sanitiseSSHError(whichResult.stderr)
+            let reason: String
+            if isMockMode {
+                reason = whichResult.timedOut ? "Timed out" : (whichResult.stderr.isEmpty ? "Remote command check failed. Review the diagnostic details below." : whichResult.stderr)
+            } else {
+                reason = whichResult.timedOut ? "Timed out" : sanitiseSSHError(whichResult.stderr)
+            }
             remoteHostStatus = RemoteHermesStatusSnapshot(
                 hostLabel: settings.displayLabel,
                 hermesFound: false,
                 hermesVersion: nil,
                 statusSummary: nil,
                 lastCheckedAt: Date(),
-                errorMessage: reason
+                errorMessage: reason,
+                preflightDiagnostic: passDiag
             )
             isTestingRemoteConnection = false
             return
@@ -1015,8 +1050,8 @@ public class HermesViewModel: ObservableObject {
             && !whichResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         // 2. hermes --version
-        let versionResult = await remoteSSHExecutor.execute(
-            command: .hermesVersion, settings: settings
+        let versionResult = await runner.execute(
+            command: .hermesVersion, settings: settings, timeout: 8, stdinData: nil
         )
         let versionLine = versionResult.exitCode == 0
             ? versionResult.stdout
@@ -1026,8 +1061,8 @@ public class HermesViewModel: ObservableObject {
             : nil
 
         // 3. hermes status
-        let statusResult = await remoteSSHExecutor.execute(
-            command: .hermesStatus, settings: settings
+        let statusResult = await runner.execute(
+            command: .hermesStatus, settings: settings, timeout: 8, stdinData: nil
         )
         let statusSummary = statusResult.exitCode == 0
             ? statusResult.stdout
@@ -1045,7 +1080,11 @@ public class HermesViewModel: ObservableObject {
             errors.append("Command unavailable (Hermes not found)")
         }
         if whichResult.exitCode != 0 && !whichResult.timedOut {
-            errors.append(sanitiseSSHError(whichResult.stderr))
+            if isMockMode {
+                errors.append(whichResult.stderr.isEmpty ? "Remote command check failed. Review the diagnostic details below." : whichResult.stderr)
+            } else {
+                errors.append(sanitiseSSHError(whichResult.stderr))
+            }
         }
         if versionResult.exitCode != 0 && !versionResult.timedOut && versionResult.exitCode != 127 {
             errors.append("Version check failed")
@@ -1054,7 +1093,12 @@ public class HermesViewModel: ObservableObject {
             errors.append("Status check failed")
         }
 
-        let errorMessage = errors.isEmpty ? nil : errors.joined(separator: "; ")
+        let errorMessage: String?
+        if isMockMode && !errors.isEmpty {
+            errorMessage = "Remote command check failed. Review the diagnostic details below."
+        } else {
+            errorMessage = errors.isEmpty ? nil : errors.joined(separator: "; ")
+        }
         
         let finalDiag = errorMessage == nil ? SSHPreflightDiagnostic(
             status: .pass,
@@ -1069,7 +1113,7 @@ public class HermesViewModel: ObservableObject {
             statusSummary: statusSummary,
             lastCheckedAt: Date(),
             errorMessage: errorMessage,
-            preflightDiagnostic: finalDiag
+            preflightDiagnostic: finalDiag ?? passDiag
         )
 
         isTestingRemoteConnection = false
