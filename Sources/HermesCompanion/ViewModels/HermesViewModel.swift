@@ -898,8 +898,10 @@ public class HermesViewModel: ObservableObject {
 
     #if DEBUG
     internal var remoteSSHExecutor = RemoteSSHExecutor()
+    internal var sshPreflightService = SSHPreflightService()
     #else
     private let remoteSSHExecutor = RemoteSSHExecutor()
+    private let sshPreflightService = SSHPreflightService()
     #endif
 
     /// Reset remote status (e.g. when settings change).
@@ -953,18 +955,27 @@ public class HermesViewModel: ObservableObject {
             return
         }
         
-        guard RemoteHostSettings.isValidIdentityFilePath(settings.identityFilePath) else {
+        // 1. Run local preflight diagnostic checks
+        let preflightDiag = await sshPreflightService.performPreflightChecks(settings: settings)
+        if let diagnostic = preflightDiag, (diagnostic.status == .fail || diagnostic.status == .warning) {
             remoteHostStatus = RemoteHermesStatusSnapshot(
                 hostLabel: settings.displayLabel,
                 hermesFound: false,
                 hermesVersion: nil,
                 statusSummary: nil,
                 lastCheckedAt: Date(),
-                errorMessage: "Identity file path does not exist or is not a file."
+                errorMessage: diagnostic.message,
+                preflightDiagnostic: diagnostic
             )
             isTestingRemoteConnection = false
             return
         }
+
+        let passDiag = SSHPreflightDiagnostic(
+            status: .pass,
+            title: "Preflight Passed",
+            message: "Your local SSH keys and agent are ready for connection."
+        )
 
         remoteHostStatus = RemoteHermesStatusSnapshot(
             hostLabel: settings.displayLabel,
@@ -972,7 +983,8 @@ public class HermesViewModel: ObservableObject {
             hermesVersion: nil,
             statusSummary: nil,
             lastCheckedAt: Date(),
-            errorMessage: nil
+            errorMessage: nil,
+            preflightDiagnostic: passDiag
         )
 
         // 1. which hermes
@@ -1043,6 +1055,12 @@ public class HermesViewModel: ObservableObject {
         }
 
         let errorMessage = errors.isEmpty ? nil : errors.joined(separator: "; ")
+        
+        let finalDiag = errorMessage == nil ? SSHPreflightDiagnostic(
+            status: .pass,
+            title: "Preflight Passed",
+            message: "Your local SSH keys and agent are ready for connection."
+        ) : nil
 
         remoteHostStatus = RemoteHermesStatusSnapshot(
             hostLabel: settings.displayLabel,
@@ -1050,7 +1068,8 @@ public class HermesViewModel: ObservableObject {
             hermesVersion: versionLine,
             statusSummary: statusSummary,
             lastCheckedAt: Date(),
-            errorMessage: errorMessage
+            errorMessage: errorMessage,
+            preflightDiagnostic: finalDiag
         )
 
         isTestingRemoteConnection = false

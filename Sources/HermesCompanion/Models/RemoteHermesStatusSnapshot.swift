@@ -22,6 +22,28 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
     /// raw hostnames, usernames, paths, or token-like strings.
     public let errorMessage: String?
 
+    /// Structured SSH diagnostic details if preflight checks detect local
+    /// setup warnings or failures.
+    public let preflightDiagnostic: SSHPreflightDiagnostic?
+
+    public init(
+        hostLabel: String,
+        hermesFound: Bool,
+        hermesVersion: String?,
+        statusSummary: String?,
+        lastCheckedAt: Date,
+        errorMessage: String?,
+        preflightDiagnostic: SSHPreflightDiagnostic? = nil
+    ) {
+        self.hostLabel = hostLabel
+        self.hermesFound = hermesFound
+        self.hermesVersion = hermesVersion
+        self.statusSummary = statusSummary
+        self.lastCheckedAt = lastCheckedAt
+        self.errorMessage = errorMessage
+        self.preflightDiagnostic = preflightDiagnostic
+    }
+
     // MARK: - Connection states
 
     public enum ConnectionState: Sendable, Equatable {
@@ -50,6 +72,7 @@ public struct RemoteHermesStatusSnapshot: Sendable, Equatable {
         hermesVersion: nil,
         statusSummary: nil,
         lastCheckedAt: Date(),
-        errorMessage: nil
+        errorMessage: nil,
+        preflightDiagnostic: nil
     )
 }

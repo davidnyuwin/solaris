@@ -252,6 +252,11 @@ public struct SettingsView: View {
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
 
+                if let diagnostic = viewModel.remoteHostStatus.preflightDiagnostic {
+                    SSHPreflightDiagnosticView(diagnostic: diagnostic)
+                        .padding(.vertical, 4)
+                }
+
                 // Test button + status
                 HStack {
                     Button(action: testRemoteConnection) {
@@ -726,5 +731,70 @@ struct PhaseStatusRow: View {
                         .stroke(color.opacity(0.2), lineWidth: 0.5)
                 )
         }
+    }
+}
+
+struct SSHPreflightDiagnosticView: View {
+    let diagnostic: SSHPreflightDiagnostic
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: diagnostic.iconName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(diagnostic.color)
+                
+                Text(diagnostic.title)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(diagnostic.color)
+                
+                Spacer()
+                
+                Text(diagnostic.status.rawValue.uppercased())
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(diagnostic.color)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(diagnostic.color.opacity(0.12))
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(diagnostic.color.opacity(0.2), lineWidth: 0.5)
+                    )
+            }
+            
+            Text(diagnostic.message)
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.7))
+                .lineLimit(nil)
+            
+            if let guide = diagnostic.actionGuide, !guide.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Recovery Suggestion:")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.5))
+                    
+                    Text(guide)
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundColor(.amber)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.4))
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(10)
+        .background(diagnostic.color.opacity(0.06))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(diagnostic.color.opacity(0.15), lineWidth: 1)
+        )
     }
 }
