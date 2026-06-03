@@ -276,21 +276,24 @@ public final class RemoteSSHExecutor: Sendable {
             
             process.terminationHandler = { proc in
                 timeoutTask.cancel()
-                stdoutReadingTask.cancel()
-                stderrReadingTask.cancel()
                 
-                if stdinData != nil {
-                    try? stdinPipe.fileHandleForWriting.close()
+                Task {
+                    _ = await stdoutReadingTask.result
+                    _ = await stderrReadingTask.result
+                    
+                    if stdinData != nil {
+                        try? stdinPipe.fileHandleForWriting.close()
+                    }
+                    
+                    if timeoutFlag.didTimeout {
+                        continuation.yield(.timedOut)
+                    } else if proc.terminationStatus != 0 {
+                        continuation.yield(.completed(exitCode: proc.terminationStatus))
+                    } else {
+                        continuation.yield(.completed(exitCode: 0))
+                    }
+                    continuation.finish()
                 }
-                
-                if timeoutFlag.didTimeout {
-                    continuation.yield(.timedOut)
-                } else if proc.terminationStatus != 0 {
-                    continuation.yield(.completed(exitCode: proc.terminationStatus))
-                } else {
-                    continuation.yield(.completed(exitCode: 0))
-                }
-                continuation.finish()
             }
             
             continuation.onTermination = { [weak process] _ in
