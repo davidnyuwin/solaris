@@ -508,9 +508,12 @@ final class HermesCompanionTests: XCTestCase {
     
     func testLiveChatBlockedFlow() async {
         let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        let prevGate = UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat")
         UserDefaults.standard.set("diagnostics", forKey: "HermesServiceMode")
+        UserDefaults.standard.set(false, forKey: "EnableDeveloperRemoteChat")
         defer {
             UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+            UserDefaults.standard.set(prevGate, forKey: "EnableDeveloperRemoteChat")
         }
         
         let viewModel = HermesViewModel(service: MockHermesService())
@@ -525,8 +528,210 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertEqual(viewModel.status?.state, .error)
         XCTAssertEqual(
             viewModel.errorMessage,
-            "Remote chat is not enabled yet. Solaris needs a verified safe prompt transport before sending prompts to Hermes."
+            "Remote chat is disabled. Enable the developer remote chat gate to test stdin-based Hermes chat execution."
         )
+    }
+
+    func testLiveChatDeveloperGateEnabledHostNotConfigured() async {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        let prevGate = UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat")
+        let prevHost = UserDefaults.standard.string(forKey: "RemoteHost")
+        UserDefaults.standard.set("diagnostics", forKey: "HermesServiceMode")
+        UserDefaults.standard.set(true, forKey: "EnableDeveloperRemoteChat")
+        UserDefaults.standard.set("", forKey: "RemoteHost") // Not configured
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+            UserDefaults.standard.set(prevGate, forKey: "EnableDeveloperRemoteChat")
+            UserDefaults.standard.set(prevHost, forKey: "RemoteHost")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        await viewModel.loadAllData()
+        let initialRunsCount = viewModel.runs.count
+        
+        viewModel.currentInput = "/chat test prompt"
+        await viewModel.sendCommand()
+        
+        XCTAssertEqual(viewModel.runs.count, initialRunsCount)
+        XCTAssertEqual(viewModel.status?.state, .error)
+        XCTAssertEqual(viewModel.errorMessage, "Remote host is not configured.")
+    }
+
+    func testLiveChatEmptyPromptRejected() async {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        let prevGate = UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat")
+        let prevHost = UserDefaults.standard.string(forKey: "RemoteHost")
+        UserDefaults.standard.set("diagnostics", forKey: "HermesServiceMode")
+        UserDefaults.standard.set(true, forKey: "EnableDeveloperRemoteChat")
+        UserDefaults.standard.set("localhost", forKey: "RemoteHost")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+            UserDefaults.standard.set(prevGate, forKey: "EnableDeveloperRemoteChat")
+            UserDefaults.standard.set(prevHost, forKey: "RemoteHost")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        await viewModel.loadAllData()
+        let initialRunsCount = viewModel.runs.count
+        
+        viewModel.currentInput = "/chat " // Empty prompt
+        await viewModel.sendCommand()
+        
+        XCTAssertEqual(viewModel.runs.count, initialRunsCount)
+        XCTAssertEqual(viewModel.status?.state, .error)
+        XCTAssertEqual(viewModel.errorMessage, "Chat prompt cannot be empty.")
+    }
+
+    func testLiveChatOversizedPromptRejected() async {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        let prevGate = UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat")
+        let prevHost = UserDefaults.standard.string(forKey: "RemoteHost")
+        UserDefaults.standard.set("diagnostics", forKey: "HermesServiceMode")
+        UserDefaults.standard.set(true, forKey: "EnableDeveloperRemoteChat")
+        UserDefaults.standard.set("localhost", forKey: "RemoteHost")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+            UserDefaults.standard.set(prevGate, forKey: "EnableDeveloperRemoteChat")
+            UserDefaults.standard.set(prevHost, forKey: "RemoteHost")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        await viewModel.loadAllData()
+        let initialRunsCount = viewModel.runs.count
+        
+        let oversizedPrompt = String(repeating: "A", count: 16385)
+        viewModel.currentInput = "/chat \(oversizedPrompt)"
+        await viewModel.sendCommand()
+        
+        XCTAssertEqual(viewModel.runs.count, initialRunsCount)
+        XCTAssertEqual(viewModel.status?.state, .error)
+        XCTAssertEqual(viewModel.errorMessage, "Chat prompt exceeds maximum allowed size of 16KB.")
+    }
+
+    func testLiveChatExecutionSuccess() async throws {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        let prevGate = UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat")
+        let prevHost = UserDefaults.standard.string(forKey: "RemoteHost")
+        UserDefaults.standard.set("diagnostics", forKey: "HermesServiceMode")
+        UserDefaults.standard.set(true, forKey: "EnableDeveloperRemoteChat")
+        UserDefaults.standard.set("localhost", forKey: "RemoteHost")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+            UserDefaults.standard.set(prevGate, forKey: "EnableDeveloperRemoteChat")
+            UserDefaults.standard.set(prevHost, forKey: "RemoteHost")
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_chat_success.sh")
+        let scriptContent = """
+        #!/bin/sh
+        echo "warning output" >&2
+        echo "Response to: $(cat -)"
+        exit 0
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        viewModel.remoteSSHExecutor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        await viewModel.loadAllData()
+        
+        let initialRunsCount = viewModel.runs.count
+        viewModel.currentInput = "/chat test input payload"
+        await viewModel.sendCommand()
+        
+        XCTAssertEqual(viewModel.runs.count, initialRunsCount + 1)
+        XCTAssertEqual(viewModel.runs[0].prompt, "/chat test input payload")
+        XCTAssertTrue(viewModel.runs[0].response.contains("Response to: test input payload"))
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.status?.state, .idle)
+        
+        // Stderr warning should be captured in logs list
+        XCTAssertTrue(viewModel.logs.contains { $0.message.contains("Remote chat stderr: warning output") })
+    }
+
+    func testLiveChatExecutionNonZeroExit() async {
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        let prevGate = UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat")
+        let prevHost = UserDefaults.standard.string(forKey: "RemoteHost")
+        UserDefaults.standard.set("diagnostics", forKey: "HermesServiceMode")
+        UserDefaults.standard.set(true, forKey: "EnableDeveloperRemoteChat")
+        UserDefaults.standard.set("localhost", forKey: "RemoteHost")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+            UserDefaults.standard.set(prevGate, forKey: "EnableDeveloperRemoteChat")
+            UserDefaults.standard.set(prevHost, forKey: "RemoteHost")
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_chat_failure.sh")
+        let scriptContent = """
+        #!/bin/sh
+        echo "some critical error description" >&2
+        exit 1
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService())
+        viewModel.remoteSSHExecutor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        await viewModel.loadAllData()
+        
+        let initialRunsCount = viewModel.runs.count
+        viewModel.currentInput = "/chat failing input"
+        await viewModel.sendCommand()
+        
+        XCTAssertEqual(viewModel.runs.count, initialRunsCount)
+        XCTAssertEqual(viewModel.status?.state, .error)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "SSH command failed (exit code: 1). Detail: some critical error description"
+        )
+    }
+
+    func testRemoteSSHExecutorTimeout() async {
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_timeout.sh")
+        let scriptContent = """
+        #!/bin/sh
+        sleep 5
+        exit 0
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let executor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        let settings = RemoteHostSettings(host: "test-host")
+        let result = await executor.execute(command: .whichHermes, settings: settings, timeout: 0.5)
+        
+        XCTAssertTrue(result.timedOut)
     }
 
     // MARK: - Batch 2D Stdin Executor Tests

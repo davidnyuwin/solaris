@@ -8,18 +8,32 @@ public enum RemoteHermesCommand: String, Sendable, CaseIterable {
     case whichHermes = "which"
     case hermesVersion = "version"
     case hermesStatus = "status"
+    case hermesChat = "chat"
 
     /// The actual argument array sent over SSH for this command.
     /// `hermesCommandBase` is the verified base command (default: "hermes").
     public func remoteArguments(hermesCommandBase: String) -> [String] {
         switch self {
         case .whichHermes:
-            return ["which", hermesCommandBase]
+            return ["which", verifiedBase(hermesCommandBase)]
         case .hermesVersion:
-            return [hermesCommandBase, "--version"]
+            return [verifiedBase(hermesCommandBase), "--version"]
         case .hermesStatus:
-            return [hermesCommandBase, "status"]
+            return [verifiedBase(hermesCommandBase), "status"]
+        case .hermesChat:
+            return [verifiedBase(hermesCommandBase), "chat", "-q", "-", "-Q"]
         }
+    }
+
+    private func verifiedBase(_ base: String) -> String {
+        // Fallback safety sanitisation
+        let trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "hermes" }
+        let forbidden = CharacterSet(charactersIn: " ;|&`$<>()[]{}#'\"!\\")
+        guard trimmed.rangeOfCharacter(from: forbidden) == nil else {
+            return "hermes"
+        }
+        return trimmed
     }
 }
 

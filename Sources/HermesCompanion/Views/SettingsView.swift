@@ -90,6 +90,9 @@ public struct SettingsView: View {
     @AppStorage("RemoteUsername") private var remoteUsername = ""
     @AppStorage("RemotePort") private var remotePort = RemoteHostSettings.defaultPort
     @AppStorage("RemoteHermesCommand") private var remoteHermesCommand = RemoteHostSettings.defaultHermesCommand
+    #if DEBUG
+    @AppStorage("EnableDeveloperRemoteChat") private var enableDeveloperRemoteChat = false
+    #endif
 
     @State private var remoteTestStatus: RemoteHermesStatusSnapshot.ConnectionState = .notConfigured
 
@@ -518,12 +521,33 @@ public struct SettingsView: View {
             subtitle: "Solaris integration phase milestones.",
             iconName: "cpu"
         ) {
-            VStack(spacing: 8) {
-                PhaseStatusRow(name: "Mock Mode", status: "Operational", color: .emerald)
-                PhaseStatusRow(name: "Local Diagnostics", status: "Operational", color: .emerald)
-                PhaseStatusRow(name: "Remote Host Mode", status: "Read-Only", color: .amber)
-                PhaseStatusRow(name: "Experimental REST", status: "Read-Only", color: .amber)
-                PhaseStatusRow(name: "WebSocket Command Channel", status: "Not Implemented", color: .rose)
+            VStack(alignment: .leading, spacing: 12) {
+                #if DEBUG
+                Toggle(isOn: $enableDeveloperRemoteChat) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable Developer Remote Chat")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                        Text("Send console prompts via SSH stdin to remote host.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                .toggleStyle(SwitchToggleStyle(tint: .emerald))
+                .padding(.bottom, 4)
+                
+                Divider()
+                    .background(Color.white.opacity(0.1))
+                    .padding(.vertical, 4)
+                #endif
+
+                VStack(spacing: 8) {
+                    PhaseStatusRow(name: "Mock Mode", status: "Operational", color: .emerald)
+                    PhaseStatusRow(name: "Local Diagnostics", status: "Operational", color: .emerald)
+                    PhaseStatusRow(name: "Remote Host Mode", status: "Read-Only", color: .amber)
+                    PhaseStatusRow(name: "Experimental REST", status: "Read-Only", color: .amber)
+                    PhaseStatusRow(name: "WebSocket Command Channel", status: "Not Implemented", color: .rose)
+                }
             }
             .padding(.vertical, 2)
         }
