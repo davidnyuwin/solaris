@@ -1705,7 +1705,7 @@ final class HermesCompanionTests: XCTestCase {
         vm.chatHistory = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
         vm.activeSessionID = sessionID
         
-        let longTitle = String(repeating: "a", count: 50)
+        let longTitle = String(repeating: "z", count: 50)
         vm.renameSession(id: sessionID, title: longTitle)
         
         let updatedTitle = vm.sessions.first(where: { $0.id == sessionID })?.title ?? ""
