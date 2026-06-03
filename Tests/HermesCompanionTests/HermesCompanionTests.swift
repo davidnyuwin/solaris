@@ -703,7 +703,10 @@ final class HermesCompanionTests: XCTestCase {
         await viewModel.sendCommand()
         _ = await viewModel.activeChatTask?.value
         
-        XCTAssertEqual(viewModel.runs.count, initialRunsCount)
+        XCTAssertEqual(viewModel.runs.count, initialRunsCount + 1)
+        XCTAssertEqual(viewModel.runs[0].prompt, "/chat failing input")
+        XCTAssertFalse(viewModel.runs[0].isSuccess)
+        XCTAssertTrue(viewModel.runs[0].response.contains("[Failed] SSH command failed"))
         XCTAssertEqual(viewModel.status?.state, .error)
         XCTAssertEqual(
             viewModel.errorMessage,
