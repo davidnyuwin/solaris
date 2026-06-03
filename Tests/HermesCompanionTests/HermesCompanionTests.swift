@@ -1134,6 +1134,300 @@ final class HermesCompanionTests: XCTestCase {
         _ = await viewModel.activeChatTask?.value
         await task1.value
     }
+    
+    // MARK: - Batch 2H Persistence Tests
+
+    func testChatHistoryStoreMissingFileReturnsEmpty() async {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        let doc = await store.load()
+        XCTAssertEqual(doc.schemaVersion, 1)
+        XCTAssertTrue(doc.sessions.isEmpty)
+    }
+
+    func testChatHistoryStoreSaveAndLoadRoundtrip() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let run = HermesPersistedRun(
+            id: UUID(),
+            createdAt: Date(),
+            completedAt: Date(),
+            mode: "mock",
+            promptPreview: "hello test",
+            response: "mocked response",
+            status: "completed",
+            errorSummary: nil
+        )
+        
+        let session = HermesChatSession(title: "Test Session", runs: [run])
+        let doc = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
+        
+        try await store.save(doc)
+        
+        let loaded = await store.load()
+        XCTAssertEqual(loaded.schemaVersion, 1)
+        XCTAssertEqual(loaded.sessions.count, 1)
+        XCTAssertEqual(loaded.sessions[0].runs.count, 1)
+        XCTAssertEqual(loaded.sessions[0].runs[0].promptPreview, "hello test")
+        XCTAssertEqual(loaded.sessions[0].runs[0].response, "mocked response")
+    }
+
+    func testChatHistoryStoreCorruptJSONIsRenamed() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let tempURL = tempDir.appendingPathComponent("chat-history.json")
+        
+        // Write corrupt JSON bytes
+        let corruptData = "invalid { json ] bytes".data(using: .utf8)!
+        try corruptData.write(to: tempURL)
+        
+        let store = ChatHistoryStore(fileURL: tempURL)
+        let doc = await store.load()
+        
+        // Should return empty doc
+        XCTAssertTrue(doc.sessions.isEmpty)
+        
+        // Original file should be gone (renamed)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tempURL.path))
+        
+        // Check that a corrupt file backup exists
+        let files = try FileManager.default.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil)
+        let corruptExists = files.contains { $0.lastPathComponent.starts(with: "chat-history.corrupt.") }
+        XCTAssertTrue(corruptExists)
+    }
+
+    func testViewModelLoadsHistoryOnAllDataFetch() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let existingRun = HermesPersistedRun(
+            id: UUID(),
+            createdAt: Date(),
+            completedAt: Date(),
+            mode: "mock",
+            promptPreview: "loaded test prompt",
+            response: "loaded response",
+            status: "completed",
+            errorSummary: nil
+        )
+        let session = HermesChatSession(title: "Loaded Session", runs: [existingRun])
+        let doc = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
+        try await store.save(doc)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        
+        // Must contain the loaded run card
+        XCTAssertTrue(viewModel.runs.contains(where: { $0.prompt == "loaded test prompt" && $0.response == "loaded response" }))
+    }
+
+    func testViewModelMockChatAutosavesOnComplete() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        
+        viewModel.currentInput = "/chat test autosave"
+        await viewModel.sendCommand()
+        _ = await viewModel.activeChatTask?.value
+        
+        // After completion, the document should be saved to the store
+        let savedDoc = await store.load()
+        XCTAssertEqual(savedDoc.sessions.count, 1)
+        XCTAssertEqual(savedDoc.sessions[0].runs.count, 1)
+        
+        let savedRun = savedDoc.sessions[0].runs[0]
+        XCTAssertEqual(savedRun.promptPreview, "/chat test autosave")
+        XCTAssertEqual(savedRun.status, "completed")
+    }
+
+    func testViewModelPersistedSanitisationAndCapping() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        
+        // Setup input containing bearer secrets and absolute /Users/ paths to be capped
+        let longPromptPart = String(repeating: "A", count: 150)
+        let bearerToken = "bearer " + "abc123def456ghi789"
+        let rawInput = "/chat \(longPromptPart) and secret: \(bearerToken) and path: /Users/sysadmin/project"
+        
+        viewModel.currentInput = rawInput
+        await viewModel.sendCommand()
+        _ = await viewModel.activeChatTask?.value
+        
+        let savedDoc = await store.load()
+        let savedRun = savedDoc.sessions[0].runs[0]
+        
+        let promptPreview = savedRun.promptPreview ?? ""
+        
+        // Prompt preview must be capped to 120 chars plus "..."
+        XCTAssertLessThanOrEqual(promptPreview.count, 123)
+        XCTAssertTrue(promptPreview.hasSuffix("..."))
+        
+        // Secrets must be redacted
+        XCTAssertFalse(promptPreview.contains("bearer " + "abc123def456ghi789"))
+        XCTAssertTrue(promptPreview.contains("Bearer [REDACTED]"))
+        
+        // Path must be normalised
+        XCTAssertFalse(promptPreview.contains("/Users/sysadmin"))
+        XCTAssertTrue(promptPreview.contains("~/project"))
+    }
+
+    func testViewModelActiveStreamNotPersisted() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        
+        viewModel.currentInput = "/chat test active"
+        let sendTask = Task {
+            await viewModel.sendCommand()
+        }
+        
+        // Wait a small delay to be in connecting/streaming
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(viewModel.chatState.isActive)
+        
+        // Store should be empty right now (contains only the default active session, but no runs)
+        let intermediateDoc = await store.load()
+        if !intermediateDoc.sessions.isEmpty {
+            XCTAssertTrue(intermediateDoc.sessions[0].runs.isEmpty)
+        }
+        
+        await sendTask.value
+        _ = await viewModel.activeChatTask?.value
+        
+        // Now it should be saved
+        let finalDoc = await store.load()
+        XCTAssertEqual(finalDoc.sessions[0].runs.count, 1)
+    }
+
+    func testViewModelCancellationIsPersisted() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        
+        viewModel.currentInput = "/chat cancel test"
+        let sendTask = Task {
+            await viewModel.sendCommand()
+        }
+        
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        viewModel.cancelActiveChat()
+        
+        await sendTask.value
+        _ = await viewModel.activeChatTask?.value
+        
+        let savedDoc = await store.load()
+        XCTAssertEqual(savedDoc.sessions[0].runs.count, 1)
+        XCTAssertEqual(savedDoc.sessions[0].runs[0].status, "cancelled")
+    }
+
+    func testViewModelNonZeroExitIsPersisted() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_chat_failure_persistence.sh")
+        let scriptContent = """
+        #!/bin/sh
+        echo "some critical error description" >&2
+        exit 1
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        let prevGate = UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat")
+        let prevHost = UserDefaults.standard.string(forKey: "RemoteHost")
+        UserDefaults.standard.set("diagnostics", forKey: "HermesServiceMode")
+        UserDefaults.standard.set(true, forKey: "EnableDeveloperRemoteChat")
+        UserDefaults.standard.set("localhost", forKey: "RemoteHost")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+            UserDefaults.standard.set(prevGate, forKey: "EnableDeveloperRemoteChat")
+            UserDefaults.standard.set(prevHost, forKey: "RemoteHost")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        viewModel.remoteSSHExecutor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        await viewModel.loadAllData()
+        
+        viewModel.currentInput = "/chat test fail"
+        await viewModel.sendCommand()
+        _ = await viewModel.activeChatTask?.value
+        
+        let savedDoc = await store.load()
+        XCTAssertEqual(savedDoc.sessions[0].runs.count, 1)
+        XCTAssertEqual(savedDoc.sessions[0].runs[0].status, "failed")
+        XCTAssertEqual(savedDoc.sessions[0].runs[0].errorSummary, "SSH command failed (exit code: 1). Detail: some critical error description")
+    }
+
+    func testViewModelTimeoutIsPersisted() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let mockScriptURL = tempDir.appendingPathComponent("mock_ssh_chat_timeout_persistence.sh")
+        let scriptContent = """
+        #!/bin/sh
+        sleep 5
+        exit 0
+        """
+        try? scriptContent.write(to: mockScriptURL, atomically: true, encoding: .utf8)
+        
+        let chmodProc = Process()
+        chmodProc.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmodProc.arguments = ["+x", mockScriptURL.path]
+        try? chmodProc.run()
+        chmodProc.waitUntilExit()
+        
+        defer {
+            try? FileManager.default.removeItem(at: mockScriptURL)
+        }
+        
+        let prevMode = UserDefaults.standard.string(forKey: "HermesServiceMode")
+        let prevGate = UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat")
+        let prevHost = UserDefaults.standard.string(forKey: "RemoteHost")
+        UserDefaults.standard.set("diagnostics", forKey: "HermesServiceMode")
+        UserDefaults.standard.set(true, forKey: "EnableDeveloperRemoteChat")
+        UserDefaults.standard.set("localhost", forKey: "RemoteHost")
+        defer {
+            UserDefaults.standard.set(prevMode, forKey: "HermesServiceMode")
+            UserDefaults.standard.set(prevGate, forKey: "EnableDeveloperRemoteChat")
+            UserDefaults.standard.set(prevHost, forKey: "RemoteHost")
+        }
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        viewModel.chatTimeout = 0.2
+        viewModel.remoteSSHExecutor = RemoteSSHExecutor(sshPathOverride: mockScriptURL.path)
+        await viewModel.loadAllData()
+        
+        viewModel.currentInput = "/chat test timeout"
+        await viewModel.sendCommand()
+        _ = await viewModel.activeChatTask?.value
+        
+        let savedDoc = await store.load()
+        XCTAssertEqual(savedDoc.sessions[0].runs.count, 1)
+        XCTAssertEqual(savedDoc.sessions[0].runs[0].status, "timedOut")
+        XCTAssertEqual(savedDoc.sessions[0].runs[0].errorSummary, "Connection timed out")
+    }
 }
 
 

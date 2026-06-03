@@ -14,6 +14,11 @@ public enum DiagnosticsRefreshSource: Sendable, Equatable {
 @MainActor
 public class HermesViewModel: ObservableObject {
     private let service: any HermesService
+    #if DEBUG
+    internal var historyStore: any ChatHistoryStoring
+    #else
+    private let historyStore: any ChatHistoryStoring
+    #endif
     
     @Published public var status: HermesStatus?
     @Published public var runs: [HermesRun] = []
@@ -30,8 +35,10 @@ public class HermesViewModel: ObservableObject {
     @Published public var chatState: ChatExecutionState = .idle
     #if DEBUG
     internal var activeChatTask: Task<Void, Never>? = nil
+    internal var chatTimeout: TimeInterval = 30
     #else
     private var activeChatTask: Task<Void, Never>? = nil
+    private let chatTimeout: TimeInterval = 30
     #endif
     private var activeChatRunID: String? = nil
     
@@ -103,14 +110,16 @@ public class HermesViewModel: ObservableObject {
         startScheduler()
     }
     
-    public init(service: any HermesService) {
+    public init(service: any HermesService, historyStore: any ChatHistoryStoring = ChatHistoryStore()) {
         self.service = service
+        self.historyStore = historyStore
         
         let savedRaw = UserDefaults.standard.string(forKey: "DiagnosticsRefreshInterval") ?? "manual"
         self.refreshInterval = DiagnosticsRefreshInterval(rawValue: savedRaw) ?? .manual
     }
     
     public func loadAllData() async {
+        await loadChatHistory()
         do {
             errorMessage = nil
             // Fetch concurrently
@@ -120,7 +129,11 @@ public class HermesViewModel: ObservableObject {
             async let logsFetch = service.getRecentLogs()
             
             self.status = try await statusFetch
-            self.runs = try await runsFetch
+            
+            let fetchedRuns = try await runsFetch
+            self.runs = fetchedRuns
+            self.mergePersistedRunsIntoUI()
+            
             self.providers = try await providersFetch
             self.logs = try await logsFetch
             
@@ -290,7 +303,7 @@ public class HermesViewModel: ObservableObject {
             let currentMode = UserDefaults.standard.string(forKey: "HermesServiceMode") ?? "mock"
             if currentMode == "mock" {
                 // Mock execution flow
-                let runID = "run-chat-\(UUID().uuidString.prefix(6).lowercased())"
+                let runID = UUID().uuidString
                 self.activeChatRunID = runID
                 
                 let placeholderRun = HermesRun(
@@ -357,7 +370,7 @@ public class HermesViewModel: ObservableObject {
                     
                     let finalSanitised = OutputSanitiser.sanitise(rawMockAccumulated, isStreaming: false)
                     if let index = self.runs.firstIndex(where: { $0.id == runID }) {
-                        self.runs[index] = HermesRun(
+                        let finalRun = HermesRun(
                             id: runID,
                             timestamp: placeholderRun.timestamp,
                             prompt: placeholderRun.prompt,
@@ -365,6 +378,8 @@ public class HermesViewModel: ObservableObject {
                             isSuccess: true,
                             durationMs: Int(Date().timeIntervalSince(startTime) * 1000)
                         )
+                        self.runs[index] = finalRun
+                        await self.saveActiveChatRun(finalRun)
                     }
                     
                     self.logs.append(LogLine(
@@ -442,7 +457,7 @@ public class HermesViewModel: ObservableObject {
                 ))
 
                 let startTime = Date()
-                let runID = "run-chat-\(UUID().uuidString.prefix(6).lowercased())"
+                let runID = UUID().uuidString
                 self.activeChatRunID = runID
                 
                 // Insert a placeholder run card so we can update it in real-time!
@@ -468,7 +483,7 @@ public class HermesViewModel: ObservableObject {
                     let stream = self.remoteSSHExecutor.executeStreaming(
                         command: .hermesChat,
                         settings: settings,
-                        timeout: 30,
+                        timeout: self.chatTimeout,
                         stdinData: promptData
                     )
 
@@ -539,7 +554,7 @@ public class HermesViewModel: ObservableObject {
                         self.chatState = .timedOut
                         self.errorMessage = "The connection timed out after 30 seconds. Verify remote host performance."
                         if let index = self.runs.firstIndex(where: { $0.id == runID }) {
-                            self.runs[index] = HermesRun(
+                            let timedOutRun = HermesRun(
                                 id: runID,
                                 timestamp: placeholderRun.timestamp,
                                 prompt: placeholderRun.prompt,
@@ -547,6 +562,8 @@ public class HermesViewModel: ObservableObject {
                                 isSuccess: false,
                                 durationMs: durationMs
                             )
+                            self.runs[index] = timedOutRun
+                            await self.saveActiveChatRun(timedOutRun)
                         }
                         if let currentStatus = self.status {
                             self.status = HermesStatus(
@@ -566,7 +583,7 @@ public class HermesViewModel: ObservableObject {
                         self.chatState = .failed(reason)
                         self.errorMessage = "SSH command execution failed: \(reason)"
                         if let index = self.runs.firstIndex(where: { $0.id == runID }) {
-                            self.runs[index] = HermesRun(
+                            let failedRun = HermesRun(
                                 id: runID,
                                 timestamp: placeholderRun.timestamp,
                                 prompt: placeholderRun.prompt,
@@ -574,6 +591,8 @@ public class HermesViewModel: ObservableObject {
                                 isSuccess: false,
                                 durationMs: durationMs
                             )
+                            self.runs[index] = failedRun
+                            await self.saveActiveChatRun(failedRun)
                         }
                         if let currentStatus = self.status {
                             self.status = HermesStatus(
@@ -598,7 +617,7 @@ public class HermesViewModel: ObservableObject {
                         self.chatState = .failed(errMsg)
                         self.errorMessage = errMsg
                         if let index = self.runs.firstIndex(where: { $0.id == runID }) {
-                            self.runs[index] = HermesRun(
+                            let failedExitRun = HermesRun(
                                 id: runID,
                                 timestamp: placeholderRun.timestamp,
                                 prompt: placeholderRun.prompt,
@@ -606,6 +625,8 @@ public class HermesViewModel: ObservableObject {
                                 isSuccess: false,
                                 durationMs: durationMs
                             )
+                            self.runs[index] = failedExitRun
+                            await self.saveActiveChatRun(failedExitRun)
                         }
                         if let currentStatus = self.status {
                             self.status = HermesStatus(
@@ -624,7 +645,7 @@ public class HermesViewModel: ObservableObject {
                     // Successful execution complete!
                     self.chatState = .completed
                     if let index = self.runs.firstIndex(where: { $0.id == runID }) {
-                        self.runs[index] = HermesRun(
+                        let completedRun = HermesRun(
                             id: runID,
                             timestamp: placeholderRun.timestamp,
                             prompt: placeholderRun.prompt,
@@ -632,6 +653,8 @@ public class HermesViewModel: ObservableObject {
                             isSuccess: true,
                             durationMs: durationMs
                         )
+                        self.runs[index] = completedRun
+                        await self.saveActiveChatRun(completedRun)
                     }
 
                     // Add completion log entry
@@ -704,7 +727,7 @@ public class HermesViewModel: ObservableObject {
         
         if let runID = activeChatRunID, let index = self.runs.firstIndex(where: { $0.id == runID }) {
             let existing = self.runs[index]
-            self.runs[index] = HermesRun(
+            let cancelledRun = HermesRun(
                 id: runID,
                 timestamp: existing.timestamp,
                 prompt: existing.prompt,
@@ -712,6 +735,10 @@ public class HermesViewModel: ObservableObject {
                 isSuccess: false,
                 durationMs: existing.durationMs
             )
+            self.runs[index] = cancelledRun
+            Task {
+                await self.saveActiveChatRun(cancelledRun)
+            }
         }
         activeChatRunID = nil
         
@@ -997,5 +1024,122 @@ public class HermesViewModel: ObservableObject {
                 self.exportFeedbackText = nil
             }
         }
+    }
+    
+    // MARK: - Chat History Persistence (Batch 2H)
+
+    @Published public var chatHistory: HermesChatHistoryDocument = HermesChatHistoryDocument(schemaVersion: 1, sessions: [])
+    @Published public var activeSessionID: UUID? = nil
+
+    public func loadChatHistory() async {
+        let doc = await historyStore.load()
+        self.chatHistory = doc
+        
+        if let latestSession = doc.sessions.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
+            self.activeSessionID = latestSession.id
+        } else {
+            let newSession = HermesChatSession(title: "Active Session")
+            self.chatHistory.sessions.append(newSession)
+            self.activeSessionID = newSession.id
+            try? await historyStore.save(self.chatHistory)
+        }
+        
+        self.mergePersistedRunsIntoUI()
+    }
+
+    private func mergePersistedRunsIntoUI() {
+        guard let sessionID = activeSessionID,
+              let session = chatHistory.sessions.first(where: { $0.id == sessionID }) else {
+            return
+        }
+        
+        let chatRuns = session.runs.map { persisted in
+            HermesRun(
+                id: persisted.id.uuidString,
+                timestamp: persisted.createdAt,
+                prompt: persisted.promptPreview ?? "",
+                response: persisted.response,
+                isSuccess: persisted.status == "completed",
+                durationMs: persisted.completedAt.map { Int($0.timeIntervalSince(persisted.createdAt) * 1000) } ?? 0
+            )
+        }
+        
+        var currentRuns = self.runs
+        for chatRun in chatRuns {
+            if !currentRuns.contains(where: { $0.id == chatRun.id }) {
+                currentRuns.append(chatRun)
+            }
+        }
+        
+        self.runs = currentRuns.sorted(by: { $0.timestamp > $1.timestamp })
+    }
+
+    private func saveActiveChatRun(_ uiRun: HermesRun) async {
+        let persistedRun = makePersistedRun(from: uiRun)
+        
+        guard let sessionID = activeSessionID else { return }
+        
+        if let sessionIndex = chatHistory.sessions.firstIndex(where: { $0.id == sessionID }) {
+            if let runIndex = chatHistory.sessions[sessionIndex].runs.firstIndex(where: { $0.id == persistedRun.id }) {
+                chatHistory.sessions[sessionIndex].runs[runIndex] = persistedRun
+            } else {
+                chatHistory.sessions[sessionIndex].runs.append(persistedRun)
+            }
+            chatHistory.sessions[sessionIndex].updatedAt = Date()
+            
+            do {
+                try await historyStore.save(chatHistory)
+            } catch {
+                // Silent error metadata capture
+            }
+        }
+    }
+
+    private func makePersistedRun(from uiRun: HermesRun) -> HermesPersistedRun {
+        let promptPreview = cleanAndCapPrompt(uiRun.prompt)
+        let sanitisedResponse = OutputSanitiser.sanitise(uiRun.response, isStreaming: false).text
+        
+        let statusStr: String
+        let errorSummary: String?
+        
+        switch chatState {
+        case .completed:
+            statusStr = "completed"
+            errorSummary = nil
+        case .failed(let reason):
+            statusStr = "failed"
+            errorSummary = reason
+        case .cancelled:
+            statusStr = "cancelled"
+            errorSummary = "Cancelled by user"
+        case .timedOut:
+            statusStr = "timedOut"
+            errorSummary = "Connection timed out"
+        default:
+            statusStr = uiRun.isSuccess ? "completed" : "failed"
+            errorSummary = nil
+        }
+        
+        let idUUID = UUID(uuidString: uiRun.id) ?? UUID()
+        let durationSeconds = Double(uiRun.durationMs) / 1000.0
+        
+        return HermesPersistedRun(
+            id: idUUID,
+            createdAt: uiRun.timestamp,
+            completedAt: uiRun.timestamp.addingTimeInterval(durationSeconds),
+            mode: UserDefaults.standard.string(forKey: "HermesServiceMode") ?? "mock",
+            promptPreview: promptPreview,
+            response: sanitisedResponse,
+            status: statusStr,
+            errorSummary: errorSummary
+        )
+    }
+
+    private func cleanAndCapPrompt(_ prompt: String) -> String {
+        let cleanPrompt = OutputSanitiser.sanitise(prompt, isStreaming: false).text
+        if cleanPrompt.count > 120 {
+            return String(cleanPrompt.prefix(120)) + "..."
+        }
+        return cleanPrompt
     }
 }
