@@ -1428,6 +1428,123 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertEqual(savedDoc.sessions[0].runs[0].status, "timedOut")
         XCTAssertEqual(savedDoc.sessions[0].runs[0].errorSummary, "Connection timed out")
     }
+
+    // MARK: - Batch 2I Multi-Session Tests
+
+    func testViewModelLoadPersistedSessions() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let session = HermesChatSession(id: UUID(), title: "Pre-existing Session", runs: [
+            HermesPersistedRun(mode: "mock", promptPreview: "hello", response: "world", status: "completed")
+        ])
+        let doc = HermesChatHistoryDocument(schemaVersion: 1, sessions: [session])
+        try await store.save(doc)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        
+        XCTAssertEqual(viewModel.sessions.count, 1)
+        XCTAssertEqual(viewModel.sessions[0].title, "Pre-existing Session")
+        XCTAssertEqual(viewModel.activeSessionID, session.id)
+        XCTAssertTrue(viewModel.runs.contains(where: { $0.prompt == "hello" }))
+    }
+
+    func testViewModelEmptyHistoryCreatesDefaultSession() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        
+        XCTAssertEqual(viewModel.sessions.count, 1)
+        XCTAssertEqual(viewModel.sessions[0].title, "New Chat")
+        XCTAssertNotNil(viewModel.activeSessionID)
+    }
+
+    func testViewModelSelectSession() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let s1 = HermesChatSession(id: UUID(), title: "Session 1", runs: [
+            HermesPersistedRun(mode: "mock", promptPreview: "prompt 1", response: "res 1", status: "completed")
+        ])
+        let s2 = HermesChatSession(id: UUID(), title: "Session 2", runs: [
+            HermesPersistedRun(mode: "mock", promptPreview: "prompt 2", response: "res 2", status: "completed")
+        ])
+        let doc = HermesChatHistoryDocument(schemaVersion: 1, sessions: [s1, s2])
+        try await store.save(doc)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        
+        // Select Session 2
+        viewModel.selectSession(id: s2.id)
+        XCTAssertEqual(viewModel.activeSessionID, s2.id)
+        XCTAssertTrue(viewModel.runs.contains(where: { $0.prompt == "prompt 2" }))
+        XCTAssertFalse(viewModel.runs.contains(where: { $0.prompt == "prompt 1" }))
+    }
+
+    func testViewModelCreateNewSession() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        let firstID = viewModel.activeSessionID
+        
+        viewModel.createNewSession()
+        XCTAssertEqual(viewModel.sessions.count, 2)
+        XCTAssertNotEqual(viewModel.activeSessionID, firstID)
+        XCTAssertEqual(viewModel.activeSession?.title, "New Chat")
+    }
+
+    func testViewModelActiveStreamBlocksSessionSwitching() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        let initialID = viewModel.activeSessionID
+        
+        viewModel.chatState = .streaming
+        
+        viewModel.selectSession(id: UUID())
+        XCTAssertEqual(viewModel.activeSessionID, initialID)
+        XCTAssertEqual(viewModel.errorMessage, "Finish or cancel the active chat before switching sessions.")
+        
+        viewModel.errorMessage = nil
+        viewModel.createNewSession()
+        XCTAssertEqual(viewModel.activeSessionID, initialID)
+        XCTAssertEqual(viewModel.errorMessage, "Finish or cancel the active chat before switching sessions.")
+    }
+
+    func testViewModelSessionTitleGeneration() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("chat-history.json")
+        let store = ChatHistoryStore(fileURL: tempURL)
+        
+        let viewModel = HermesViewModel(service: MockHermesService(), historyStore: store)
+        await viewModel.loadAllData()
+        
+        // 1. Derivation from simple prompt
+        viewModel.currentInput = "/chat deploy database"
+        await viewModel.sendCommand()
+        _ = await viewModel.activeChatTask?.value
+        
+        XCTAssertEqual(viewModel.activeSession?.title, "deploy database")
+        
+        // Create new session for testing path normalisation and secret redaction
+        viewModel.createNewSession()
+        
+        let bearerToken = "bearer " + "xyz123abc456"
+        viewModel.currentInput = "/chat config for /Users/sysadmin/test with token \(bearerToken)"
+        await viewModel.sendCommand()
+        _ = await viewModel.activeChatTask?.value
+        
+        // Should normalise path to ~ and redact secrets, and strip /chat prefix
+        let expectedTitle = "config for ~/test with token Bearer [RED..."
+        XCTAssertEqual(viewModel.activeSession?.title, expectedTitle)
+    }
 }
 
 

@@ -41,6 +41,7 @@ public class HermesViewModel: ObservableObject {
     private let chatTimeout: TimeInterval = 30
     #endif
     private var activeChatRunID: String? = nil
+    private var fetchedServiceRuns: [HermesRun] = []
     
     // Batch 1 Diagnostics controls
     @Published public var isRefreshingDiagnostics: Bool = false
@@ -131,6 +132,7 @@ public class HermesViewModel: ObservableObject {
             self.status = try await statusFetch
             
             let fetchedRuns = try await runsFetch
+            self.fetchedServiceRuns = fetchedRuns
             self.runs = fetchedRuns
             self.mergePersistedRunsIntoUI()
             
@@ -689,8 +691,11 @@ public class HermesViewModel: ObservableObject {
             // Reload all lists and update states
             async let runsFetch = service.getRecentRuns()
             async let logsFetch = service.getRecentLogs()
-            self.runs = try await runsFetch
+            let fetchedRuns = try await runsFetch
+            self.fetchedServiceRuns = fetchedRuns
+            self.runs = fetchedRuns
             self.logs = try await logsFetch
+            self.mergePersistedRunsIntoUI()
             
             status = try await service.getStatus()
         } catch {
@@ -1024,7 +1029,29 @@ public class HermesViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Chat History Persistence (Batch 2H)
+    // MARK: - Chat History Persistence (Batch 2H/2I)
+    
+    public var sessions: [HermesChatSession] {
+        chatHistory.sessions
+    }
+    
+    public var activeSession: HermesChatSession? {
+        chatHistory.sessions.first(where: { $0.id == activeSessionID })
+    }
+    
+    public var runsForActiveSession: [HermesRun] {
+        guard let session = activeSession else { return [] }
+        return session.runs.map { persisted in
+            HermesRun(
+                id: persisted.id.uuidString,
+                timestamp: persisted.createdAt,
+                prompt: persisted.promptPreview ?? "",
+                response: persisted.response,
+                isSuccess: persisted.status == "completed",
+                durationMs: persisted.completedAt.map { Int($0.timeIntervalSince(persisted.createdAt) * 1000) } ?? 0
+            )
+        }.sorted(by: { $0.timestamp > $1.timestamp })
+    }
 
     @Published public var chatHistory: HermesChatHistoryDocument = HermesChatHistoryDocument(schemaVersion: 1, sessions: [])
     @Published public var activeSessionID: UUID? = nil
@@ -1036,13 +1063,38 @@ public class HermesViewModel: ObservableObject {
         if let latestSession = doc.sessions.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
             self.activeSessionID = latestSession.id
         } else {
-            let newSession = HermesChatSession(title: "Active Session")
+            let newSession = HermesChatSession(title: "New Chat")
             self.chatHistory.sessions.append(newSession)
             self.activeSessionID = newSession.id
             try? await historyStore.save(self.chatHistory)
         }
         
         self.mergePersistedRunsIntoUI()
+    }
+
+    public func createNewSession() {
+        if chatState.isActive {
+            errorMessage = "Finish or cancel the active chat before switching sessions."
+            return
+        }
+        let newSession = HermesChatSession(title: "New Chat")
+        self.chatHistory.sessions.append(newSession)
+        self.activeSessionID = newSession.id
+        
+        Task {
+            try? await historyStore.save(self.chatHistory)
+        }
+        
+        self.runs = self.fetchedServiceRuns
+    }
+
+    public func selectSession(id: UUID) {
+        if chatState.isActive {
+            errorMessage = "Finish or cancel the active chat before switching sessions."
+            return
+        }
+        activeSessionID = id
+        mergePersistedRunsIntoUI()
     }
 
     private func mergePersistedRunsIntoUI() {
@@ -1062,7 +1114,7 @@ public class HermesViewModel: ObservableObject {
             )
         }
         
-        var currentRuns = self.runs
+        var currentRuns = self.fetchedServiceRuns
         for chatRun in chatRuns {
             if !currentRuns.contains(where: { $0.id == chatRun.id }) {
                 currentRuns.append(chatRun)
@@ -1083,6 +1135,20 @@ public class HermesViewModel: ObservableObject {
             } else {
                 chatHistory.sessions[sessionIndex].runs.append(persistedRun)
             }
+            
+            // Derive title if it's currently "New Chat" or empty/default
+            let currentTitle = chatHistory.sessions[sessionIndex].title
+            if currentTitle == "New Chat" || currentTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if let preview = persistedRun.promptPreview {
+                    chatHistory.sessions[sessionIndex].title = cleanAndCapTitle(preview)
+                } else {
+                    let formatter = DateFormatter()
+                    formatter.dateStyle = .short
+                    formatter.timeStyle = .short
+                    chatHistory.sessions[sessionIndex].title = "Chat on \(formatter.string(from: Date()))"
+                }
+            }
+            
             chatHistory.sessions[sessionIndex].updatedAt = Date()
             
             do {
@@ -1091,6 +1157,23 @@ public class HermesViewModel: ObservableObject {
                 // Silent error metadata capture
             }
         }
+    }
+
+    private func cleanAndCapTitle(_ preview: String) -> String {
+        var clean = preview.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.lowercased().hasPrefix("/chat ") {
+            clean = String(clean.dropFirst(6))
+        } else if clean.lowercased().hasPrefix("chat ") {
+            clean = String(clean.dropFirst(5))
+        }
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        clean = clean.components(separatedBy: .controlCharacters).joined()
+        
+        if clean.count > 40 {
+            return String(clean.prefix(40)) + "..."
+        }
+        return clean.isEmpty ? "New Chat" : clean
     }
 
     private func makePersistedRun(from uiRun: HermesRun) -> HermesPersistedRun {
