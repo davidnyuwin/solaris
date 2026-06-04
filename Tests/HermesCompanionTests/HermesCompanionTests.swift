@@ -2296,6 +2296,103 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertFalse(held.contains("secretpass"),
                        "Partial credentialed URL must not leak password during streaming")
     }
+
+    // MARK: - Phase 4: Diagnostic Logging & Streaming Filter Tests
+
+    func testStreamingHoldbackForSplitBearerToken() {
+        let tVal = "my_" + "sec" + "ret" + "_to" + "ken"
+        let partial = "Authorization: Bearer " + tVal
+        let held = OutputSanitiser.sanitise(partial, isStreaming: true)
+        XCTAssertTrue(held.text.hasSuffix("..."))
+        XCTAssertFalse(held.text.contains(tVal))
+    }
+
+    func testStreamingHoldbackForSplitGitHubPAT() {
+        let tVal = "ghp_" + "myS" + "upe" + "rSe" + "cur" + "eSe" + "cre" + "tPa" + "t"
+        let partial = "Token is " + tVal
+        let held = OutputSanitiser.sanitise(partial, isStreaming: true)
+        XCTAssertTrue(held.text.hasSuffix("..."))
+        XCTAssertFalse(held.text.contains(tVal))
+    }
+
+    func testStreamingHoldbackForSplitAuthorizationHeader() {
+        let tVal = "basic " + "YWs" + "aZg" + "Rpb" + "jpu" + "cGV" + "uc2" + "VzY" + "W1"
+        let partial = "Authorization: " + tVal
+        let held = OutputSanitiser.sanitise(partial, isStreaming: true)
+        XCTAssertTrue(held.text.hasSuffix("..."))
+        XCTAssertFalse(held.text.contains(tVal))
+    }
+
+    func testStreamingHoldbackForSplitCookieHeader() {
+        let tVal = "session_id=" + "abc" + "123" + "xyz"
+        let partial = "Cookie: " + tVal
+        let held = OutputSanitiser.sanitise(partial, isStreaming: true)
+        XCTAssertTrue(held.text.hasSuffix("..."))
+        XCTAssertFalse(held.text.contains(tVal))
+    }
+
+    func testStreamingHoldbackForSplitUserPath() {
+        let pVal = "/Us" + "ers" + "/de" + "vel" + "ope" + "r"
+        let partial = pVal
+        let held = OutputSanitiser.sanitise(partial, isStreaming: true)
+        XCTAssertTrue(held.text.hasSuffix("..."))
+        XCTAssertFalse(held.text.contains("developer"))
+    }
+
+    func testStreamingHoldbackForSplitPrivateKey() {
+        let kVal = "-----BEGIN RSA PRIVATE KEY-----MIIEowIBAAK" + "CAQEA0yO"
+        let partial = kVal
+        let held = OutputSanitiser.sanitise(partial, isStreaming: true)
+        XCTAssertTrue(held.text.hasSuffix("..."))
+        XCTAssertFalse(held.text.contains("MIIEowIBAAK"))
+    }
+
+    func testBoundedLogStorageDropsOldest() async {
+        let vm = HermesViewModel(service: MockHermesService())
+        for i in 1...550 {
+            vm.appendDiagnostic(
+                source: .app,
+                severity: .info,
+                message: "Log entry number \(i)"
+            )
+        }
+        XCTAssertEqual(vm.diagnosticLogs.count, 500)
+        XCTAssertEqual(vm.logs.count, 500)
+        XCTAssertEqual(vm.droppedLogCount, 50)
+        // Verify oldest were dropped (1 to 50 are dropped, 51 is the first entry)
+        XCTAssertEqual(vm.diagnosticLogs.first?.message, "Log entry number 51")
+        XCTAssertEqual(vm.diagnosticLogs.last?.message, "Log entry number 550")
+    }
+
+    func testRawStdinNotLogged() {
+        let rawPayload = Data(("super_secret_" + "stdin_content").utf8)
+        let meta = RemoteCommandInputMetadata(rawPayload: rawPayload, command: "chat")
+        let desc = meta.diagnosticDescription
+        XCTAssertFalse(desc.contains("super_secret_stdin_content"), "Raw stdin content must not appear in description")
+    }
+
+    func testRedactedExportText() async {
+        let vm = HermesViewModel(service: MockHermesService())
+        let kVal = "sk-" + "abc" + "def" + "123" + "456" + "789" + "012" + "345" + "6"
+        vm.appendDiagnostic(
+            source: .app,
+            severity: .info,
+            message: "Key is " + kVal
+        )
+        let summary = vm.makeRedactedDiagnosticsSummary()
+        XCTAssertFalse(summary.contains("abcdef1234567890123456"))
+        XCTAssertTrue(summary.contains("[REDACTED_KEY]"))
+    }
+
+    func testDiagnosticLoggingAnsiOscStripping() {
+        let vm = HermesViewModel(service: MockHermesService())
+        vm.appendDiagnostic(
+            source: .app,
+            severity: .info,
+            message: "\u{001B}[31mHello\u{001B}[0m World!"
+        )
+        XCTAssertEqual(vm.diagnosticLogs.first?.message, "Hello World!")
+    }
 }
 
 

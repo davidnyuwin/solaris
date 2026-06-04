@@ -433,6 +433,65 @@ public struct ProvidersView: View {
                     .accessibilityLabel("Export redacted diagnostics summary")
                     .accessibilityHint("Saves a privacy-safe diagnostics summary to a text file")
                     
+                    Divider()
+                        .frame(height: 12)
+                        .background(Color.white.opacity(0.12))
+                    
+                    // Source Filter Menu
+                    Menu {
+                        Button("All Sources") { viewModel.logSourceFilter = nil }
+                        ForEach(DiagnosticLogSource.allCases, id: \.self) { src in
+                            Button(src.rawValue.capitalized) { viewModel.logSourceFilter = src }
+                        }
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text(viewModel.logSourceFilter?.rawValue.capitalized ?? "Source")
+                                .font(.system(size: 10.5, weight: .medium))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundColor(.white)
+                        .cornerRadius(5)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 100)
+                    .accessibilityLabel("Filter by log source")
+                    
+                    // Severity Filter Menu
+                    Menu {
+                        Button("All Severities") { viewModel.logSeverityFilter = nil }
+                        ForEach(DiagnosticLogSeverity.allCases, id: \.self) { sev in
+                            Button(sev.rawValue.capitalized) { viewModel.logSeverityFilter = sev }
+                        }
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text(viewModel.logSeverityFilter?.rawValue.capitalized ?? "Severity")
+                                .font(.system(size: 10.5, weight: .medium))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundColor(.white)
+                        .cornerRadius(5)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 100)
+                    .accessibilityLabel("Filter by log severity")
+                    
+                    // Redacted Only Toggle
+                    Toggle(isOn: $viewModel.showRedactedLogsOnly) {
+                        Text("Redacted Only")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    .toggleStyle(.checkbox)
+                    .accessibilityLabel("Show redacted log entries only")
+                    
                     Spacer()
                     
                     if viewModel.isDiagnosticsLogPaused {
@@ -449,7 +508,7 @@ public struct ProvidersView: View {
                 }
                 
                 DiagnosticsLogConsole(
-                    logs: viewModel.isDiagnosticsLogPaused ? viewModel.pausedLogs : viewModel.logs,
+                    logs: viewModel.isDiagnosticsLogPaused ? viewModel.pausedDiagnosticLogs : viewModel.filteredLogs,
                     isPrivacyActive: isPrivacyModeActive
                 )
             }

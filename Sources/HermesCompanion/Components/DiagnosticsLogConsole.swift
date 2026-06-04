@@ -1,10 +1,10 @@
 import SwiftUI
 
 public struct DiagnosticsLogConsole: View {
-    let logs: [LogLine]
+    let logs: [DiagnosticLogEntry]
     let isPrivacyActive: Bool
     
-    public init(logs: [LogLine], isPrivacyActive: Bool = false) {
+    public init(logs: [DiagnosticLogEntry], isPrivacyActive: Bool = false) {
         self.logs = logs
         self.isPrivacyActive = isPrivacyActive
     }
@@ -52,7 +52,7 @@ public struct DiagnosticsLogConsole: View {
 }
 
 struct LogConsoleRow: View {
-    let log: LogLine
+    let log: DiagnosticLogEntry
     let isPrivacyActive: Bool
     
     var body: some View {
@@ -63,8 +63,18 @@ struct LogConsoleRow: View {
                 .foregroundColor(.white.opacity(0.35))
                 .frame(width: 76, alignment: .leading)
             
+            // Source Badge
+            Text(log.source.rawValue.uppercased())
+                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                .foregroundColor(sourceColor)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(sourceColor.opacity(0.12))
+                .cornerRadius(3)
+                .frame(width: 70, alignment: .leading)
+            
             // Severity Badge
-            SeverityBadge(level: log.level)
+            SeverityBadge(level: log.severity.rawValue.uppercased())
                 .scaleEffect(0.9)
                 .frame(width: 52, alignment: .leading)
             
@@ -82,15 +92,27 @@ struct LogConsoleRow: View {
         .background(rowBgColor)
         .cornerRadius(4)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(log.level.isEmpty ? "Log entry" : "\(log.level) log")
+        .accessibilityLabel("\(log.source.rawValue) \(log.severity.rawValue) log")
         .accessibilityValue("\(formatTimestamp(log.timestamp)): \(safeMessage)")
     }
     
+    private var sourceColor: Color {
+        switch log.source {
+        case .app: return .blue
+        case .mock: return .hermesPurple
+        case .localDiagnostics: return .amber
+        case .sshPreflight: return .yellow
+        case .liveProbe: return .emerald
+        case .redaction: return .rose
+        case .privacy: return .hermesTeal
+        }
+    }
+    
     private var rowBgColor: Color {
-        switch log.level.uppercased() {
-        case "ERROR", "CRITICAL", "ERR":
+        switch log.severity {
+        case .error:
             return Color.rose.opacity(0.05)
-        case "WARN", "WARNING":
+        case .warning:
             return Color.amber.opacity(0.05)
         default:
             return Color.clear
@@ -104,7 +126,6 @@ struct LogConsoleRow: View {
         }
         return msg
     }
-
     
     private func formatTimestamp(_ date: Date) -> String {
         let formatter = DateFormatter()

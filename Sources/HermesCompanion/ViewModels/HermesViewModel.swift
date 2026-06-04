@@ -24,6 +24,25 @@ public class HermesViewModel: ObservableObject {
     @Published public var runs: [HermesRun] = []
     @Published public var providers: [ProviderHealth] = []
     @Published public var logs: [LogLine] = []
+    @Published public var diagnosticLogs: [DiagnosticLogEntry] = []
+    @Published public var logSourceFilter: DiagnosticLogSource? = nil
+    @Published public var logSeverityFilter: DiagnosticLogSeverity? = nil
+    @Published public var showRedactedLogsOnly: Bool = false
+    @Published public var pausedDiagnosticLogs: [DiagnosticLogEntry] = []
+    
+    public var filteredLogs: [DiagnosticLogEntry] {
+        var filtered = diagnosticLogs
+        if let sourceFilter = logSourceFilter {
+            filtered = filtered.filter { $0.source == sourceFilter }
+        }
+        if let severityFilter = logSeverityFilter {
+            filtered = filtered.filter { $0.severity == severityFilter }
+        }
+        if showRedactedLogsOnly {
+            filtered = filtered.filter { $0.redacted }
+        }
+        return filtered
+    }
     
     @Published public var currentInput: String = ""
     @Published public var isPendingResponse: Bool = false
@@ -57,6 +76,102 @@ public class HermesViewModel: ObservableObject {
         isDiagnosticsLogPaused.toggle()
         if isDiagnosticsLogPaused {
             pausedLogs = logs
+            pausedDiagnosticLogs = filteredLogs
+        }
+    }
+
+    public private(set) var droppedLogCount = 0
+
+    public func appendDiagnostic(
+        source: DiagnosticLogSource,
+        severity: DiagnosticLogSeverity,
+        message: String
+    ) {
+        let sanitised = OutputSanitiser.sanitise(message, isStreaming: false)
+        let entry = DiagnosticLogEntry(
+            source: source,
+            severity: severity,
+            message: sanitised.text,
+            redacted: sanitised.isRedacted,
+            truncated: sanitised.isTruncated
+        )
+        appendDiagnosticLog(entry)
+    }
+
+    public func appendDiagnosticLog(_ entry: DiagnosticLogEntry) {
+        diagnosticLogs.append(entry)
+        if diagnosticLogs.count > 500 {
+            let overflow = diagnosticLogs.count - 500
+            diagnosticLogs.removeFirst(overflow)
+            droppedLogCount += overflow
+        }
+        
+        let levelStr: String
+        switch entry.severity {
+        case .info: levelStr = "INFO"
+        case .warning: levelStr = "WARN"
+        case .error: levelStr = "ERROR"
+        }
+        let line = LogLine(
+            id: entry.id.uuidString,
+            timestamp: entry.timestamp,
+            level: levelStr,
+            message: entry.message
+        )
+        logs.append(line)
+        if logs.count > 500 {
+            logs.removeFirst(logs.count - 500)
+        }
+    }
+
+    public func ingestDaemonLogs(_ daemonLogs: [LogLine]) {
+        for log in daemonLogs {
+            let sev: DiagnosticLogSeverity
+            switch log.level.uppercased() {
+            case "WARN", "WARNING":
+                sev = .warning
+            case "ERROR", "ERR", "CRITICAL":
+                sev = .error
+            default:
+                sev = .info
+            }
+            
+            let isMockMode = (UserDefaults.standard.string(forKey: "HermesServiceMode") == HermesServiceMode.mock.rawValue)
+            let src: DiagnosticLogSource = isMockMode ? .mock : .localDiagnostics
+            
+            let isRedacted = log.message.contains("[REDACTED") || log.message.contains("...")
+            let isTruncated = log.message.contains("[output truncated")
+            
+            if !diagnosticLogs.contains(where: { $0.message == log.message && abs($0.timestamp.timeIntervalSince(log.timestamp)) < 1.0 }) {
+                let entry = DiagnosticLogEntry(
+                    id: UUID(uuidString: log.id) ?? UUID(),
+                    timestamp: log.timestamp,
+                    source: src,
+                    severity: sev,
+                    message: log.message,
+                    redacted: isRedacted,
+                    truncated: isTruncated
+                )
+                diagnosticLogs.append(entry)
+            }
+        }
+        
+        diagnosticLogs.sort { $0.timestamp < $1.timestamp }
+        
+        if diagnosticLogs.count > 500 {
+            let overflow = diagnosticLogs.count - 500
+            diagnosticLogs.removeFirst(overflow)
+            droppedLogCount += overflow
+        }
+        
+        self.logs = diagnosticLogs.map { entry in
+            let lvl: String
+            switch entry.severity {
+            case .info: lvl = "INFO"
+            case .warning: lvl = "WARN"
+            case .error: lvl = "ERROR"
+            }
+            return LogLine(id: entry.id.uuidString, timestamp: entry.timestamp, level: lvl, message: entry.message)
         }
     }
 
@@ -137,7 +252,7 @@ public class HermesViewModel: ObservableObject {
             self.mergePersistedRunsIntoUI()
             
             self.providers = try await providersFetch
-            self.logs = try await logsFetch
+            self.ingestDaemonLogs(try await logsFetch)
             
             self.lastDiagnosticsRefreshAt = Date()
         } catch {
@@ -157,7 +272,7 @@ public class HermesViewModel: ObservableObject {
             
             self.status = try await statusFetch
             self.providers = try await providersFetch
-            self.logs = try await logsFetch
+            self.ingestDaemonLogs(try await logsFetch)
             
             self.lastDiagnosticsRefreshAt = Date()
             succeeded = true
@@ -384,12 +499,11 @@ public class HermesViewModel: ObservableObject {
                         await self.saveActiveChatRun(finalRun)
                     }
                     
-                    self.logs.append(LogLine(
-                        id: UUID().uuidString,
-                        timestamp: Date(),
-                        level: "INFO",
+                    self.appendDiagnostic(
+                        source: .mock,
+                        severity: .info,
                         message: "Mock Chat simulation complete. Output sanitised."
-                    ))
+                    )
                     
                     self.chatState = .completed
                     self.activeChatTask = nil
@@ -457,12 +571,11 @@ public class HermesViewModel: ObservableObject {
                     rawPayload: promptData,
                     command: RemoteHermesCommand.hermesChat.rawValue
                 )
-                self.logs.append(LogLine(
-                    id: UUID().uuidString,
-                    timestamp: Date(),
-                    level: "WARNING",
+                self.appendDiagnostic(
+                    source: .app,
+                    severity: .warning,
                     message: "Developer remote chat is enabled. Dispatching stdin payload to remote Hermes host via SSH. [\(stdinMeta.diagnosticDescription)]"
-                ))
+                )
 
                 let startTime = Date()
                 let runID = UUID().uuidString
@@ -520,13 +633,14 @@ public class HermesViewModel: ObservableObject {
                             
                         case .stderr(let text):
                             rawStderr += text
-                            let sanitisedText = OutputSanitiser.sanitise(text).text
-                            if !sanitisedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                self.logs.append(LogLine(
-                                    id: UUID().uuidString,
-                                    timestamp: Date(),
-                                    level: "INFO",
-                                    message: "Remote chat stderr: \(sanitisedText)"
+                            let sanitisedResult = OutputSanitiser.sanitise(text)
+                            if !sanitisedResult.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                self.appendDiagnosticLog(DiagnosticLogEntry(
+                                    source: .liveProbe,
+                                    severity: .info,
+                                    message: "Remote chat stderr: \(sanitisedResult.text)",
+                                    redacted: sanitisedResult.isRedacted,
+                                    truncated: sanitisedResult.isTruncated
                                 ))
                             }
                             
@@ -534,12 +648,11 @@ public class HermesViewModel: ObservableObject {
                             if self.chatState == .connecting {
                                 self.chatState = .streaming
                             }
-                            self.logs.append(LogLine(
-                                id: UUID().uuidString,
-                                timestamp: Date(),
-                                level: "INFO",
+                            self.appendDiagnostic(
+                                source: .liveProbe,
+                                severity: .info,
                                 message: "Remote status: \(text)"
-                            ))
+                            )
                             
                         case .completed(let exitCode):
                             executionStatus = Int(exitCode)
@@ -666,12 +779,11 @@ public class HermesViewModel: ObservableObject {
                     }
 
                     // Add completion log entry
-                    self.logs.append(LogLine(
-                        id: UUID().uuidString,
-                        timestamp: Date(),
-                        level: "INFO",
+                    self.appendDiagnostic(
+                        source: .liveProbe,
+                        severity: .info,
                         message: "Remote Chat execution complete. Output sanitised."
-                    ))
+                    )
 
                     // Update state to idle
                     if let currentStatus = self.status {
@@ -700,7 +812,7 @@ public class HermesViewModel: ObservableObject {
             let fetchedRuns = try await runsFetch
             self.fetchedServiceRuns = fetchedRuns
             self.runs = fetchedRuns
-            self.logs = try await logsFetch
+            self.ingestDaemonLogs(try await logsFetch)
             self.mergePersistedRunsIntoUI()
             
             status = try await service.getStatus()
@@ -723,12 +835,11 @@ public class HermesViewModel: ObservableObject {
     public func cancelActiveChat() async {
         guard chatState == .connecting || chatState == .streaming else { return }
         
-        self.logs.append(LogLine(
-            id: UUID().uuidString,
-            timestamp: Date(),
-            level: "INFO",
+        self.appendDiagnostic(
+            source: .app,
+            severity: .info,
             message: "Remote chat cancelled by user."
-        ))
+        )
         
         activeChatTask?.cancel()
         activeChatTask = nil
@@ -817,18 +928,18 @@ public class HermesViewModel: ObservableObject {
             }
         }
         
-        summary += "Diagnostics Log Count: \(logs.count)\n"
+        summary += "Diagnostics Log Count (filtered/total): \(filteredLogs.count)/\(diagnosticLogs.count)\n"
         
-        // Grab recent log entries, max 5, and sanitize
-        let recentLogs = logs.suffix(5)
-        if !recentLogs.isEmpty {
-            summary += "Recent Event Summaries (max 5):\n"
-            for log in recentLogs {
+        if !filteredLogs.isEmpty {
+            summary += "Filtered Event Logs:\n"
+            for log in filteredLogs {
                 let formatter = DateFormatter()
                 formatter.dateFormat = "HH:mm:ss.SSS"
                 let timestampStr = formatter.string(from: log.timestamp)
+                let severityStr = log.severity.rawValue.uppercased()
+                let sourceStr = log.source.rawValue.uppercased()
                 let sanitizedMsg = DiagnosticsRedactor.redact(log.message, redactPIDs: true, redactTokens: true)
-                summary += "  [\(timestampStr)] [\(log.level)] \(sanitizedMsg)\n"
+                summary += "  [\(timestampStr)] [\(sourceStr)] [\(severityStr)] \(sanitizedMsg)\n"
             }
         }
         

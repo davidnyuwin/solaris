@@ -3,10 +3,12 @@ import Foundation
 public struct SanitisedResult: Sendable, Equatable {
     public let text: String
     public let isTruncated: Bool
+    public let isRedacted: Bool
     
-    public init(text: String, isTruncated: Bool) {
+    public init(text: String, isTruncated: Bool, isRedacted: Bool = false) {
         self.text = text
         self.isTruncated = isTruncated
+        self.isRedacted = isRedacted
     }
 }
 
@@ -58,6 +60,7 @@ public struct OutputSanitiser: Sendable {
             return true
         })
 
+        let textBeforeRedactions = text
         
         // 5. Secret-Shaped Redaction (Preserves harmless commit hashes and diagnostic hex fingerprints)
         // Redact OpenAI API keys (sk- followed by characters)
@@ -138,12 +141,14 @@ public struct OutputSanitiser: Sendable {
             text = pathRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "~")
         }
         
+        let isRedacted = (text != textBeforeRedactions)
+        
         // 7. Explicit Truncation Append
         if isTruncated {
             text += "\n[output truncated after 65536 bytes]"
         }
         
-        return SanitisedResult(text: text, isTruncated: isTruncated)
+        return SanitisedResult(text: text, isTruncated: isTruncated, isRedacted: isRedacted)
     }
     
     private static func holdBackStreamingSuffix(_ text: String) -> String {
