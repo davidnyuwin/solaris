@@ -2008,9 +2008,21 @@ final class HermesCompanionTests: XCTestCase {
         try chmodProc.run()
         chmodProc.waitUntilExit()
         
+        let prevPolicy = LiveRemotePolicy.load()
+        let prevApproval = UserDefaults.standard.object(forKey: "LiveRemotePolicyUserApproved")
+        LiveRemotePolicy.readOnlyProbes.save()
+        UserDefaults.standard.set(true, forKey: "LiveRemotePolicyUserApproved")
+
         defer {
             try? FileManager.default.removeItem(at: mockScriptURL)
             try? FileManager.default.removeItem(at: logURL)
+            
+            prevPolicy.save()
+            if let prevApproval = prevApproval {
+                UserDefaults.standard.set(prevApproval, forKey: "LiveRemotePolicyUserApproved")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "LiveRemotePolicyUserApproved")
+            }
         }
         
         let store = ChatHistoryStore(fileURL: tempDir.appendingPathComponent(UUID().uuidString))
@@ -2060,8 +2072,19 @@ final class HermesCompanionTests: XCTestCase {
         try chmodProc.run()
         chmodProc.waitUntilExit()
         
+        let prevPolicy = LiveRemotePolicy.load()
+        let prevApproval = UserDefaults.standard.object(forKey: "LiveRemotePolicyUserApproved")
+        LiveRemotePolicy.readOnlyProbes.save()
+        UserDefaults.standard.set(true, forKey: "LiveRemotePolicyUserApproved")
+        
         defer {
             try? FileManager.default.removeItem(at: mockScriptURL)
+            prevPolicy.save()
+            if let prevApproval = prevApproval {
+                UserDefaults.standard.set(prevApproval, forKey: "LiveRemotePolicyUserApproved")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "LiveRemotePolicyUserApproved")
+            }
         }
         
         let store = ChatHistoryStore(fileURL: tempDir.appendingPathComponent(UUID().uuidString))
