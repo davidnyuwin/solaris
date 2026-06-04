@@ -72,6 +72,33 @@ public struct OutputSanitiser: Sendable {
             text = bearerRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "Bearer [REDACTED]")
         }
         
+        // Redact Authorization header values (Basic, Digest, Token, etc.)
+        if let authRegex = try? NSRegularExpression(
+            pattern: "(?i)authorization:\\s*(?:basic|digest|token|bearer)?\\s*[a-zA-Z0-9_\\-\\.\\+/=]{8,}",
+            options: []
+        ) {
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            text = authRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "Authorization: [REDACTED]")
+        }
+        
+        // Redact Cookie header values
+        if let cookieRegex = try? NSRegularExpression(
+            pattern: "(?i)cookie:\\s*[^\\r\\n]{8,}",
+            options: []
+        ) {
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            text = cookieRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "Cookie: [REDACTED]")
+        }
+        
+        // Redact GitHub personal access tokens (ghp_, ghs_, github_pat_)
+        if let githubTokenRegex = try? NSRegularExpression(
+            pattern: "\\b(?:ghp|ghs|github_pat)_[a-zA-Z0-9_]{20,}\\b",
+            options: []
+        ) {
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            text = githubTokenRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "[REDACTED_GITHUB_TOKEN]")
+        }
+        
         // Redact PEM private key blocks (multi-line)
         if let pemRegex = try? NSRegularExpression(pattern: "-----BEGIN[A-Z\\s]+PRIVATE KEY-----([\\s\\S]*?)-----END[A-Z\\s]+PRIVATE KEY-----", options: []) {
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
@@ -112,7 +139,10 @@ public struct OutputSanitiser: Sendable {
             "(?i)\\bbearer(?:\\s+[a-zA-Z0-9_\\-\\.\\+]{0,100})?$",
             "/(?:Users(?:/[a-zA-Z0-9_.-]{0,50})?|User|Use|Us)$",
             "-----BEGIN[a-zA-Z0-9\\+/=\\s-]{0,2000}$",
-            "(?i)\\b([a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|client_secret|auth)[a-zA-Z0-9_-]*)\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-\\.\\+]{0,100}$"
+            "(?i)\\b([a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|client_secret|auth)[a-zA-Z0-9_-]*)\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-\\.\\+]{0,100}$",
+            "(?i)authorization:\\s*(?:basic|digest|token|bearer)?\\s*[a-zA-Z0-9_\\-\\.\\+/=]{0,100}$",
+            "(?i)cookie:\\s*[^\\r\\n]{0,200}$",
+            "\\b(?:ghp|ghs|github_pat)_[a-zA-Z0-9_]{0,100}$"
         ]
         
         var longestMatchLength = 0
@@ -267,3 +297,75 @@ public final class StreamingOutputSanitiser: @unchecked Sendable {
     }
 }
 
+// MARK: - Remote Command Input Metadata
+
+/// A metadata-only audit record describing an SSH stdin submission.
+///
+/// **Security contract**: This struct MUST NOT hold the raw stdin payload.
+/// It captures only structural metadata (byte count, command type, timestamp,
+/// and an optional sanitised first-line hint) so that diagnostic log entries
+/// remain meaningful without leaking secret-bearing content.
+public struct RemoteCommandInputMetadata: Sendable, Equatable {
+    /// The allowlisted command that received the stdin payload.
+    public let command: String
+
+    /// Byte length of the raw stdin payload (not the content itself).
+    public let byteCount: Int
+
+    /// Wall-clock time when the stdin payload was submitted.
+    public let submittedAt: Date
+
+    /// An optional sanitised one-line hint derived from the first line of
+    /// the payload (e.g. the command verb, with all secrets redacted).
+    /// Nil when the payload is binary or when even the first line is secret-
+    /// shaped after sanitisation.
+    public let sanitisedFirstLineHint: String?
+
+    /// Creates metadata from a raw stdin `Data` payload and a command label.
+    ///
+    /// - Parameters:
+    ///   - rawPayload: The actual stdin bytes — used only to derive metadata;
+    ///     the payload itself is NOT stored.
+    ///   - command: A human-readable label for the allowlisted command.
+    public init(rawPayload: Data, command: String) {
+        self.command = command
+        self.byteCount = rawPayload.count
+        self.submittedAt = Date()
+
+        // Extract first line of the payload as a UTF-8 string, then run it
+        // through the full sanitiser to strip any secrets before storing.
+        if let rawString = String(data: rawPayload, encoding: .utf8) {
+            let firstLine = String(rawString.prefix(200))
+                .components(separatedBy: .newlines)
+                .first ?? ""
+            let hint = OutputSanitiser.sanitise(firstLine, isStreaming: false).text
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Only store the hint if it is non-empty AND does not look like it
+            // was entirely redacted (i.e., it still carries some human-readable
+            // content beyond placeholder tokens).
+            let isEntirelyRedacted = hint.isEmpty
+                || hint == "[REDACTED_KEY]"
+                || hint == "Bearer [REDACTED]"
+                || hint == "[REDACTED_PRIVATE_KEY]"
+                || hint == "[REDACTED_GITHUB_TOKEN]"
+                || hint == "Authorization: [REDACTED]"
+                || hint == "Cookie: [REDACTED]"
+            self.sanitisedFirstLineHint = isEntirelyRedacted ? nil : hint
+        } else {
+            // Binary payload — no hint available.
+            self.sanitisedFirstLineHint = nil
+        }
+    }
+
+    /// A human-readable diagnostic description safe for inclusion in log entries.
+    public var diagnosticDescription: String {
+        var parts: [String] = [
+            "command=\(command)",
+            "bytes=\(byteCount)"
+        ]
+        if let hint = sanitisedFirstLineHint {
+            parts.append("hint=\(hint)")
+        }
+        return parts.joined(separator: " ")
+    }
+}

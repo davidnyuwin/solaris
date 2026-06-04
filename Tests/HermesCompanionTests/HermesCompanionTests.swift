@@ -2084,6 +2084,138 @@ final class HermesCompanionTests: XCTestCase {
         }
         XCTAssertFalse(UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat"))
     }
+
+    // MARK: - Phase 6: Redaction Policy Extension Tests
+
+    func testOutputSanitiserRedactsGitHubPAT() {
+        let input = "Token value: ghp_abcdefghijklmnopqrstuvwxyz123456"
+        let result = OutputSanitiser.sanitise(input)
+        XCTAssertFalse(result.text.contains("ghp_"), "GitHub PAT prefix must be redacted")
+        XCTAssertTrue(result.text.contains("[REDACTED_GITHUB_TOKEN]"), "Redaction placeholder must be present")
+    }
+
+    func testOutputSanitiserRedactsGitHubServerPAT() {
+        let input = "Access: ghs_ServerToken9876543210abcdefghijkl"
+        let result = OutputSanitiser.sanitise(input)
+        XCTAssertFalse(result.text.contains("ghs_"), "GitHub server PAT must be redacted")
+        XCTAssertTrue(result.text.contains("[REDACTED_GITHUB_TOKEN]"))
+    }
+
+    func testOutputSanitiserRedactsAuthorizationHeader() {
+        let input = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+        let result = OutputSanitiser.sanitise(input)
+        XCTAssertFalse(result.text.contains("eyJhb"), "Authorization header value must be redacted")
+        XCTAssertTrue(result.text.contains("Authorization: [REDACTED]"))
+    }
+
+    func testOutputSanitiserRedactsBasicAuthorizationHeader() {
+        let input = "authorization: Basic dXNlcjpwYXNzd29yZA=="
+        let result = OutputSanitiser.sanitise(input)
+        XCTAssertFalse(result.text.contains("dXNlcjpw"), "Basic auth credentials must be redacted")
+        XCTAssertTrue(result.text.contains("Authorization: [REDACTED]"))
+    }
+
+    func testOutputSanitiserRedactsCookieHeader() {
+        let input = "Cookie: session=abc123xyzSuperLongCookieValue; token=secret99"
+        let result = OutputSanitiser.sanitise(input)
+        XCTAssertFalse(result.text.contains("session=abc123"), "Cookie value must be redacted")
+        XCTAssertTrue(result.text.contains("Cookie: [REDACTED]"))
+    }
+
+    func testOutputSanitiserPreservesShortCookieLabelWithoutValue() {
+        // A bare "Cookie:" with no long value should not trigger the pattern
+        let input = "Set-Cookie: x=1"
+        let result = OutputSanitiser.sanitise(input)
+        // "Set-Cookie" does not match "^Cookie:" so it should not be redacted
+        XCTAssertFalse(result.text.contains("[REDACTED]") && result.text.contains("Cookie"), "Set-Cookie should not be redacted by Cookie pattern")
+    }
+
+    func testStreamingHoldbackForAuthorizationHeader() {
+        // A streaming chunk that ends mid-Authorization header value
+        let partial = "Authorization: Bearer eyJhbGciO"
+        let held = OutputSanitiser.sanitise(partial, isStreaming: true).text
+        // Should be held back (truncated to "...") so nothing leaks
+        XCTAssertFalse(held.contains("eyJhbGci"), "Partial Authorization header value must be held back during streaming")
+    }
+
+    func testStreamingHoldbackForGitHubPAT() {
+        let partial = "Token: ghp_abc123"
+        let held = OutputSanitiser.sanitise(partial, isStreaming: true).text
+        XCTAssertFalse(held.contains("ghp_"), "Partial GitHub PAT must be held back during streaming")
+    }
+
+    // MARK: - Phase 6: RemoteCommandInputMetadata Tests
+
+    func testRemoteCommandInputMetadataByteCount() {
+        let payload = "hello world".data(using: .utf8)!
+        let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "chat")
+        XCTAssertEqual(meta.byteCount, payload.count)
+    }
+
+    func testRemoteCommandInputMetadataCommandLabel() {
+        let payload = Data("ping".utf8)
+        let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "hermesChat")
+        XCTAssertEqual(meta.command, "hermesChat")
+    }
+
+    func testRemoteCommandInputMetadataSafeHintForPlainText() {
+        let payload = Data("what is the weather today".utf8)
+        let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "chat")
+        // Hint should be present for plain-text payloads
+        XCTAssertNotNil(meta.sanitisedFirstLineHint)
+        XCTAssertEqual(meta.sanitisedFirstLineHint, "what is the weather today")
+    }
+
+    func testRemoteCommandInputMetadataHintNilForSecretPayload() {
+        // A payload that is entirely a GitHub PAT should have its hint suppressed
+        let rawKey = "ghp_abcdefghijklmnopqrstuvwxyz123456"
+        let payload = Data(rawKey.utf8)
+        let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "chat")
+        XCTAssertNil(meta.sanitisedFirstLineHint, "A payload that sanitises entirely to a redaction token must have nil hint")
+    }
+
+    func testRemoteCommandInputMetadataHintNilForOpenAIKey() {
+        let rawKey = "sk-abcdefghijklmnopqrstuvwxyz1234567890ABCDEF"
+        let payload = Data(rawKey.utf8)
+        let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "chat")
+        XCTAssertNil(meta.sanitisedFirstLineHint, "OpenAI key payloads must produce nil hint")
+    }
+
+    func testRemoteCommandInputMetadataBinaryPayloadNilHint() {
+        // Non-UTF-8 bytes should produce nil hint
+        let binaryData = Data([0xFF, 0xFE, 0x00, 0x01, 0xAB, 0xCD])
+        let meta = RemoteCommandInputMetadata(rawPayload: binaryData, command: "chat")
+        XCTAssertNil(meta.sanitisedFirstLineHint)
+    }
+
+    func testRemoteCommandInputMetadataDiagnosticDescriptionContainsCommand() {
+        let payload = Data("hello".utf8)
+        let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "hermesChat")
+        XCTAssertTrue(meta.diagnosticDescription.contains("command=hermesChat"))
+    }
+
+    func testRemoteCommandInputMetadataDiagnosticDescriptionContainsBytes() {
+        let payload = Data("hello".utf8)
+        let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "chat")
+        XCTAssertTrue(meta.diagnosticDescription.contains("bytes=\(payload.count)"))
+    }
+
+    func testRemoteCommandInputMetadataDiagnosticDescriptionNeverContainsRawSecret() {
+        let secret = "sk-verysecretkey1234567890ABCDEFGHIJKLMNO"
+        let payload = Data(secret.utf8)
+        let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "chat")
+        XCTAssertFalse(meta.diagnosticDescription.contains(secret), "Raw secret must never appear in diagnosticDescription")
+        XCTAssertFalse(meta.diagnosticDescription.contains("sk-"), "OpenAI key prefix must not appear in diagnosticDescription")
+    }
+
+    func testRemoteCommandInputMetadataOnlyFirstLineUsedForHint() {
+        // Multiline payload — only first line should appear in hint
+        let payload = Data("first line\nsecond line\nthird line".utf8)
+        let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "chat")
+        XCTAssertEqual(meta.sanitisedFirstLineHint, "first line")
+        XCTAssertFalse(meta.diagnosticDescription.contains("second line"))
+        XCTAssertFalse(meta.diagnosticDescription.contains("third line"))
+    }
 }
 
 

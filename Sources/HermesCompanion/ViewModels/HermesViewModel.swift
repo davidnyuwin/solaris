@@ -451,12 +451,17 @@ public class HermesViewModel: ObservableObject {
                     return
                 }
 
-                // Append developer warning log before execution (do not log prompt text)
+                // Build stdin input metadata for safe audit logging.
+                // Raw prompt content is NEVER written to logs — only metadata.
+                let stdinMeta = RemoteCommandInputMetadata(
+                    rawPayload: promptData,
+                    command: RemoteHermesCommand.hermesChat.rawValue
+                )
                 self.logs.append(LogLine(
                     id: UUID().uuidString,
                     timestamp: Date(),
                     level: "WARNING",
-                    message: "Developer remote chat is enabled. Prompts are sent to the configured remote Hermes host via SSH stdin. Prompt text is not logged."
+                    message: "Developer remote chat is enabled. Dispatching stdin payload to remote Hermes host via SSH. [\(stdinMeta.diagnosticDescription)]"
                 ))
 
                 let startTime = Date()
