@@ -102,6 +102,9 @@ public struct SettingsView: View {
     #endif
 
     @State private var remoteTestStatus: RemoteConnectionState = .notConfigured
+    @State private var remotePolicy: LiveRemotePolicy = LiveRemotePolicy.load()
+    @State private var userApproved: Bool = UserDefaults.standard.bool(forKey: "LiveRemotePolicyUserApproved")
+    @State private var showApprovalDialog = false
 
     private var remoteHostSection: some View {
         SettingsCard(
@@ -254,6 +257,78 @@ public struct SettingsView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
+
+                // Live Remote Probes Toggle
+                Toggle(isOn: Binding(
+                    get: { remotePolicy == .readOnlyProbes },
+                    set: { newValue in
+                        if newValue {
+                            if !userApproved {
+                                showApprovalDialog = true
+                            } else {
+                                remotePolicy = .readOnlyProbes
+                                remotePolicy.save()
+                            }
+                        } else {
+                            remotePolicy = .disabled
+                            remotePolicy.save()
+                            viewModel.clearRemoteStatus()
+                            remoteTestStatus = .notConfigured
+                        }
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable Live Remote Probes")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                        Text("Solaris will run a small read-only check on the selected host. It will not run arbitrary commands or modify the remote system.")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.5))
+                            .lineLimit(3)
+                    }
+                }
+                .toggleStyle(SwitchToggleStyle(tint: .hermesTeal))
+                .padding(.vertical, 4)
+                .alert(isPresented: $showApprovalDialog) {
+                    Alert(
+                        title: Text("Enable Live Remote Probes?"),
+                        message: Text("Solaris can run a small read-only probe to check whether Hermes is available on the selected remote host. It will not run arbitrary commands or modify the remote system."),
+                        primaryButton: .default(Text("Enable Read-Only Probes"), action: {
+                            userApproved = true
+                            UserDefaults.standard.set(true, forKey: "LiveRemotePolicyUserApproved")
+                            remotePolicy = .readOnlyProbes
+                            remotePolicy.save()
+                        }),
+                        secondaryButton: .cancel(Text("Cancel"), action: {
+                            remotePolicy = .disabled
+                            remotePolicy.save()
+                        })
+                    )
+                }
+
+                HStack {
+                    if remotePolicy == .readOnlyProbes && userApproved {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.emerald)
+                                .frame(width: 6, height: 6)
+                            Text("Live Remote: Read-Only Active")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.emerald)
+                        }
+                    } else {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.white.opacity(0.3))
+                                .frame(width: 6, height: 6)
+                            Text("Live Remote: Disabled")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.white.opacity(0.4))
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 2)
 
                 if let diagnostic = viewModel.remoteHostStatus.preflightDiagnostic {
                     SSHPreflightDiagnosticView(diagnostic: diagnostic)

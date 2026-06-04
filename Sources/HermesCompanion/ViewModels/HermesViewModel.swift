@@ -1009,26 +1009,63 @@ public class HermesViewModel: ObservableObject {
             }
             runner = mockRunner
         } else {
-            #if !DEBUG
-            // In release builds, live remote connection verification is disabled.
-            remoteHostStatus = RemoteHermesStatusSnapshot(
-                hostLabel: settings.displayLabel,
-                hermesFound: false,
-                hermesVersion: nil,
-                statusSummary: nil,
-                lastCheckedAt: Date(),
-                errorMessage: "Live remote checks are disabled in this build.",
-                preflightDiagnostic: nil,
-                connectionState: .liveChecksDisabled,
-                daemonState: .unavailable,
-                tunnelState: remoteHostStatus.tunnelState,
-                robustnessState: remoteHostStatus.robustnessState
-            )
-            isTestingRemoteConnection = false
-            return
+            let policy = LiveRemotePolicy.load()
+            let userApproved = UserDefaults.standard.bool(forKey: "LiveRemotePolicyUserApproved")
+            
+            #if DEBUG
+            let isDeveloperRemoteEnabled = UserDefaults.standard.bool(forKey: "EnableDeveloperRemoteChat")
             #else
-            runner = self.remoteSSHExecutor
+            let isDeveloperRemoteEnabled = false
             #endif
+
+            let isValid = RemoteHostSettings.isValidHost(settings.host)
+                       && RemoteHostSettings.isValidUsername(settings.username)
+                       && RemoteHostSettings.isValidIdentityFilePath(settings.identityFilePath)
+
+            let decision = LiveRemotePolicyEvaluator.canExecute(
+                .hermesStatus,
+                policy: policy,
+                userApproved: userApproved,
+                isDeveloperRemoteEnabled: isDeveloperRemoteEnabled,
+                isValidHost: isValid
+            )
+
+            switch decision {
+            case .allowed:
+                runner = self.remoteSSHExecutor
+            case .blocked(let reason):
+                let blockMessage: String
+                switch reason {
+                case .policyDisabled:
+                    blockMessage = "Live remote checks are disabled."
+                case .requiresUserApproval:
+                    blockMessage = "User approval required to run remote checks."
+                case .debugOnly:
+                    blockMessage = "This operation requires a debug build."
+                case .forbidden:
+                    blockMessage = "This operation is forbidden by the safety contract."
+                case .invalidInput:
+                    blockMessage = "Invalid host configuration."
+                case .releaseBuildBlocked:
+                    blockMessage = "Live remote checks are disabled in this build."
+                }
+                
+                remoteHostStatus = RemoteHermesStatusSnapshot(
+                    hostLabel: settings.displayLabel,
+                    hermesFound: false,
+                    hermesVersion: nil,
+                    statusSummary: nil,
+                    lastCheckedAt: Date(),
+                    errorMessage: blockMessage,
+                    preflightDiagnostic: nil,
+                    connectionState: .liveChecksDisabled,
+                    daemonState: .unavailable,
+                    tunnelState: remoteHostStatus.tunnelState,
+                    robustnessState: remoteHostStatus.robustnessState
+                )
+                isTestingRemoteConnection = false
+                return
+            }
         }
 
         let passDiag = SSHPreflightDiagnostic(
