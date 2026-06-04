@@ -1020,19 +1020,21 @@ final class HermesCompanionTests: XCTestCase {
         let chunk1 = "Authorization: Bearer abc"
         let chunk2 = "def123456789"
         
-        // During streaming
+        // During streaming: partial auth header must be held back
         let progressive1 = OutputSanitiser.sanitise(chunk1, isStreaming: true).text
         XCTAssertFalse(progressive1.contains("Bearer abc"))
         XCTAssertTrue(progressive1.contains("..."))
         
+        // After full value arrives, the Authorization header regex fires first (more specific),
+        // producing "Authorization: [REDACTED]" — this is the correct and complete redaction.
         let progressive2 = OutputSanitiser.sanitise(chunk1 + chunk2, isStreaming: true).text
         XCTAssertFalse(progressive2.contains("abcdef"))
-        XCTAssertTrue(progressive2.contains("Bearer [REDACTED]"))
+        XCTAssertTrue(progressive2.contains("Authorization: [REDACTED]"))
         
         // Final state
         let final = OutputSanitiser.sanitise(chunk1 + chunk2, isStreaming: false).text
         XCTAssertFalse(final.contains("abcdef"))
-        XCTAssertTrue(final.contains("Bearer [REDACTED]"))
+        XCTAssertTrue(final.contains("Authorization: [REDACTED]"))
     }
     
     func testStreamRedactionSplitHomePath() {
