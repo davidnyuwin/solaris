@@ -19,15 +19,15 @@ public enum RemoteHermesCommand: String, Sendable, CaseIterable {
     public func remoteArguments(hermesCommandBase: String, tunnelRequest: RemoteTunnelRequest? = nil) -> [String] {
         switch self {
         case .whichHermes:
-            return ["which", verifiedBase(hermesCommandBase)]
+            return ["which", RemoteHermesCommand.verifyBase(hermesCommandBase)]
         case .hermesVersion:
-            return [verifiedBase(hermesCommandBase), "--version"]
+            return [RemoteHermesCommand.verifyBase(hermesCommandBase), "--version"]
         case .hermesStatus:
-            return [verifiedBase(hermesCommandBase), "status"]
+            return [RemoteHermesCommand.verifyBase(hermesCommandBase), "status"]
         case .hermesChat:
-            return [verifiedBase(hermesCommandBase), "chat", "-q", "-", "-Q"]
+            return [RemoteHermesCommand.verifyBase(hermesCommandBase), "chat", "-q", "-", "-Q"]
         case .hermesRestart:
-            return [verifiedBase(hermesCommandBase), "restart"]
+            return [RemoteHermesCommand.verifyBase(hermesCommandBase), "restart"]
         case .tunnelStart:
             if let req = tunnelRequest {
                 return ["-N", "-L", "\(req.localPort):\(req.remoteHost):\(req.remotePort)"]
@@ -41,7 +41,10 @@ public enum RemoteHermesCommand: String, Sendable, CaseIterable {
         }
     }
 
-    private func verifiedBase(_ base: String) -> String {
+    /// Verifies that a base command string contains no shell metacharacters.
+    /// Returns the input if clean, or falls back to "hermes" if forbidden characters are found.
+    /// Exposed as internal for testing the safety contract.
+    static func verifyBase(_ base: String) -> String {
         // Fallback safety sanitisation
         let trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "hermes" }
@@ -158,7 +161,7 @@ public final class RemoteSSHExecutor: RemoteCommandRunning, Sendable {
             )
         }
 
-        let hermesBase = sanitiseHermesCommand(settings.hermesCommand)
+        let hermesBase = RemoteHermesCommand.verifyBase(settings.hermesCommand)
         let remoteArgs = command.remoteArguments(hermesCommandBase: hermesBase, tunnelRequest: tunnelRequest)
 
         // Build the SSH argument list.
@@ -214,7 +217,7 @@ public final class RemoteSSHExecutor: RemoteCommandRunning, Sendable {
                 return
             }
             
-            let hermesBase = sanitiseHermesCommand(settings.hermesCommand)
+            let hermesBase = RemoteHermesCommand.verifyBase(settings.hermesCommand)
             let remoteArgs = command.remoteArguments(hermesCommandBase: hermesBase, tunnelRequest: tunnelRequest)
             
             var sshArgs: [String] = []
