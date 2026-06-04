@@ -62,17 +62,19 @@ The default policy is **disabled**. The user must explicitly opt in. A kill swit
 
 Allowed only when `LiveRemotePolicy == .readOnly` and user has confirmed:
 
-- **`which hermes`** — check if Hermes binary exists on remote host.
-- **`hermes --version`** — read Hermes version string.
-- **`hermes status`** — read Hermes daemon status summary.
-- **`hermes gateway status`** — read gateway connectivity status.
-- **`tunnel-status`** — read tunnel status (if tunnel was started externally).
+- **`which hermes`** — check if Hermes binary exists on remote host. Output is summarized to `hermesFound: Bool` — the full path is never stored or displayed. See Section 5.5 for path disclosure policy.
+- **`hermes --version`** — read Hermes version string (first line only).
+- **`hermes status`** — read Hermes daemon status summary (first line only).
+- **`tunnel-status`** — read tunnel status (if tunnel was started externally). This is a hermes subcommand query — it cannot start, stop, or modify tunnels. See Section 5.6 for query-only guarantee.
+
+**Note:** `hermes gateway status` is NOT currently available in the execution enum (`RemoteHermesCommand`). It exists only in `RemoteCommandBuilder.AllowedRemoteCommand`, which is not in the live execution path. Adding it requires a new `RemoteHermesCommand` case and a separate approval step.
 
 **Properties of allowed operations:**
 - Read-only: produce no side effects on the remote host.
 - Bounded output: exit immediately with finite stdout/stderr.
 - No stdin: none of the allowed operations accept input.
 - Short-lived: expected completion within 8 seconds.
+- Summarised output: only the first line of stdout is captured; the rest is discarded.
 
 ### 3.2 Explicitly forbidden in release builds
 
@@ -117,7 +119,8 @@ enum LiveRemotePolicy: String, CaseIterable, Codable {
     case disabled
 
     /// Read-only probes allowed with user opt-in.
-    /// whichHermes, hermesVersion, hermesStatus, gatewayStatus, tunnelStatus.
+    /// whichHermes, hermesVersion, hermesStatus, tunnelStatus.
+    /// Note: gatewayStatus requires a new RemoteHermesCommand case (see Section 3.1 note).
     case readOnly
 
     /// All operations allowed (DEBUG builds only, never in release).
@@ -180,6 +183,19 @@ Each case maps to a **fixed argument array** returned by `remoteArguments()`:
 | Stdin data | 16KB cap | `RemoteSSHExecutor` |
 | Tunnel request | Port range + host validation | `RemoteTunnelRequest` |
 
+### 5.2.1 `hermesCommandBase` trust model
+
+The `hermesCommandBase` field is user-controlled and could point to any executable on the remote host (e.g., `/opt/hermes/bin/hermes-cli` or a custom path). This is intentional — it supports custom Hermes installations.
+
+**Safety argument:** Even if `hermesCommandBase` points to a non-Hermes executable, the fixed argument structure prevents destructive operations:
+- `which <base>` — returns a path (informational only)
+- `<base> --version` — returns a version string (informational only)
+- `<base> status` — likely returns an error (no side effects)
+
+The user already has SSH access to the remote host. Solaris does not elevate their privileges.
+
+**Risk acknowledged:** Information disclosure from a different tool's `--version` output. Acceptable for a tool where the user operates on their own infrastructure.
+
 ### 5.3 Output contract
 
 All remote output is a structured `RemoteSSHResult`:
@@ -199,10 +215,37 @@ Errors are typed (`ExecutorError`: `.invalidSettings`, `.commandNotAllowed`, `.e
 
 ### 5.4 Streaming output
 
-Streaming uses `RemoteSSHStreamEvent` enum:
+Streaming uses `RemoteSSHStreamEvent` enum (DEBUG-only for chat/tunnel — not available in release):
 - `.stdout(String)` — sanitised via `StreamingOutputSanitiser`
 - `.stderr(String)` — sanitised via `StreamingOutputSanitiser`
 - `.status(String)`, `.completed(exitCode:)`, `.failed(String)`, `.timedOut`
+
+### 5.5 `which hermes` path disclosure policy
+
+`which hermes` returns the full filesystem path of the Hermes binary (e.g., `/home/user/.local/bin/hermes`).
+
+**Current behaviour (safe):** The code extracts only a boolean `hermesFound` from the `which` result — the path itself is never stored in `RemoteHermesStatusSnapshot` or displayed in the UI. Error messages from failed `which` are passed through `sanitiseSSHError()`, which redacts filesystem paths.
+
+**Design decision:** Path disclosure is acceptable because:
+1. The user already has SSH access to the remote host.
+2. The full path is consumed only as a boolean and discarded.
+3. Error messages have paths redacted to `[path]`.
+
+This policy must be preserved in Phase 3B when live probes are wired into release builds.
+
+### 5.6 `tunnel-status` query-only guarantee
+
+`tunnel-status` maps to the argument array `["tunnel-status"]` — a fixed hermes subcommand.
+- It cannot start tunnels (that requires `tunnel-start`).
+- It cannot stop tunnels (that requires `tunnel-stop`).
+- It cannot modify SSH configuration or network state.
+- It produces bounded stdout (status text) and exits.
+
+This is distinct from SSH tunnel operations (`-L` flag in `tunnelStart`), which remain DEBUG-only.
+
+### 5.7 Dead code note: `RemoteCommandBuilder`
+
+`RemoteCommandBuilder` and its `AllowedRemoteCommand` enum exist in the codebase but are **not in the live execution path**. `RemoteSSHExecutor` uses its own `RemoteHermesCommand` enum and `remoteArguments()` method. `RemoteCommandBuilder` should be consolidated or removed to avoid developer confusion during Phase 3A.
 
 ---
 
@@ -423,9 +466,15 @@ These tests must be written and passing before Phase 3 implementation begins:
 | `testReleaseBuildNeverRunsRestart` | `restartRemoteDaemon` returns `.liveChecksDisabled` in release |
 | `testReleaseBuildNeverRunsChat` | Chat path returns error in release |
 | `testReleaseBuildNeverStartsTunnel` | Tunnel start returns `.liveChecksDisabled` in release |
+| `testReleaseBuildNeverStopsTunnel` | Tunnel stop returns `.liveChecksDisabled` in release (separate gate) |
 | `testRawSecretNeverLogged` | `RemoteCommandInputMetadata` never contains raw stdin |
 | `testRawStdoutNeverLogged` | Log entries contain only sanitised summaries |
 | `testLiveRemotePolicyCannotBeFullInRelease` | Even with UserDefaults override, release blocks `.full` |
+| `testWhichHermesPathNotStored` | `which hermes` output is boolean only — path never in snapshot or UI |
+| `testTunnelStatusIsQueryOnly` | `tunnel-status` arguments cannot start/stop tunnels |
+| `testUserConfirmationRequiredBeforeProbe` | First probe requires confirmation dialog (policy gate) |
+| `testEnvConfigDumpingForbidden` | No enum case exists for env, printenv, cat, or config reading |
+| `testFilesystemBrowsingForbidden` | No enum case exists for ls, find, or filesystem commands |
 
 ### 10.3 CI checks
 
@@ -453,6 +502,7 @@ These tests must be written and passing before Phase 3 implementation begins:
 - Add `AppStorage("LiveRemotePolicy")` to `HermesViewModel`.
 - Add policy check in `RemoteSSHExecutor` (or a policy wrapper).
 - Write all no-go tests.
+- **Scope restriction:** Phase 3A does NOT remove or modify existing `#if !DEBUG` release blocks. It adds policy infrastructure alongside them. Phase 3B is the step that wires read-only probes through the live path.
 - **Gate:** All no-go tests pass before proceeding.
 
 ### Phase 3B: Release probe enablement
