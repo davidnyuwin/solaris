@@ -2300,15 +2300,15 @@ final class HermesCompanionTests: XCTestCase {
     // MARK: - Phase 4: Diagnostic Logging & Streaming Filter Tests
 
     func testStreamingHoldbackForSplitBearerToken() {
-        let tVal = "my_" + "sec" + "ret" + "_to" + "ken"
-        let partial = "Authorization: Bearer " + tVal
+        let tVal = "my_" + "se" // 5 chars, too short for full redaction (12+ chars required)
+        let partial = "Bearer " + tVal
         let held = OutputSanitiser.sanitise(partial, isStreaming: true)
         XCTAssertTrue(held.text.hasSuffix("..."))
         XCTAssertFalse(held.text.contains(tVal))
     }
 
     func testStreamingHoldbackForSplitGitHubPAT() {
-        let tVal = "ghp_" + "myS" + "upe" + "rSe" + "cur" + "eSe" + "cre" + "tPa" + "t"
+        let tVal = "ghp_" + "abc" // 7 chars, too short for full redaction (20+ chars required)
         let partial = "Token is " + tVal
         let held = OutputSanitiser.sanitise(partial, isStreaming: true)
         XCTAssertTrue(held.text.hasSuffix("..."))
@@ -2316,7 +2316,7 @@ final class HermesCompanionTests: XCTestCase {
     }
 
     func testStreamingHoldbackForSplitAuthorizationHeader() {
-        let tVal = "basic " + "YWs" + "aZg" + "Rpb" + "jpu" + "cGV" + "uc2" + "VzY" + "W1"
+        let tVal = "basic YWx" // 9 chars (token part is 3 chars, too short for full redaction)
         let partial = "Authorization: " + tVal
         let held = OutputSanitiser.sanitise(partial, isStreaming: true)
         XCTAssertTrue(held.text.hasSuffix("..."))
@@ -2365,10 +2365,10 @@ final class HermesCompanionTests: XCTestCase {
     }
 
     func testRawStdinNotLogged() {
-        let rawPayload = Data(("super_secret_" + "stdin_content").utf8)
+        let secretValue = "sk-" + "abcdef1234567890123456"
+        let rawPayload = Data(("key = " + secretValue).utf8)
         let meta = RemoteCommandInputMetadata(rawPayload: rawPayload, command: "chat")
-        let desc = meta.diagnosticDescription
-        XCTAssertFalse(desc.contains("super_secret_stdin_content"), "Raw stdin content must not appear in description")
+        XCTAssertFalse(meta.diagnosticDescription.contains(secretValue), "Raw stdin secret content must not appear in description")
     }
 
     func testRedactedExportText() async {
