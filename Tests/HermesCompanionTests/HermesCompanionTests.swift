@@ -273,14 +273,17 @@ final class HermesCompanionTests: XCTestCase {
     // MARK: - Remote Host Mode Tests
     
     func testRemoteCommandEnumCases() {
-        // All five allowlisted commands must be present
+        // All eight allowlisted commands must be present
         let allCommands = RemoteHermesCommand.allCases
         XCTAssertTrue(allCommands.contains(.whichHermes))
         XCTAssertTrue(allCommands.contains(.hermesVersion))
         XCTAssertTrue(allCommands.contains(.hermesStatus))
         XCTAssertTrue(allCommands.contains(.hermesChat))
         XCTAssertTrue(allCommands.contains(.hermesRestart))
-        XCTAssertEqual(allCommands.count, 5)
+        XCTAssertTrue(allCommands.contains(.tunnelStart))
+        XCTAssertTrue(allCommands.contains(.tunnelStop))
+        XCTAssertTrue(allCommands.contains(.tunnelStatus))
+        XCTAssertEqual(allCommands.count, 8)
     }
     
     func testRemoteCommandWhichArguments() {
