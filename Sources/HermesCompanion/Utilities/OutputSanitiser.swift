@@ -66,19 +66,21 @@ public struct OutputSanitiser: Sendable {
             text = openaiRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "[REDACTED_KEY]")
         }
         
-        // Redact Bearer tokens
-        if let bearerRegex = try? NSRegularExpression(pattern: "(?i)bearer\\s+[a-zA-Z0-9_\\-\\.\\+]{12,}", options: []) {
-            let range = NSRange(text.startIndex..<text.endIndex, in: text)
-            text = bearerRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "Bearer [REDACTED]")
-        }
-        
-        // Redact Authorization header values (Basic, Digest, Token, etc.)
+        // Redact Authorization header values (Basic, Digest, Token, Bearer, or bare value).
+        // MUST run before the standalone Bearer-token regex so the more-specific pattern
+        // fires first and produces a clean "Authorization: [REDACTED]" replacement.
         if let authRegex = try? NSRegularExpression(
-            pattern: "(?i)authorization:\\s*(?:basic|digest|token|bearer)?\\s*[a-zA-Z0-9_\\-\\.\\+/=]{8,}",
+            pattern: "(?i)authorization:\\s*(?:(?:basic|digest|token|bearer)\\s+)?[a-zA-Z0-9_\\-\\.\\+/=]{8,}",
             options: []
         ) {
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
             text = authRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "Authorization: [REDACTED]")
+        }
+        
+        // Redact standalone Bearer tokens (e.g. in JSON bodies or logs, not in Authorization headers)
+        if let bearerRegex = try? NSRegularExpression(pattern: "(?i)bearer\\s+[a-zA-Z0-9_\\-\\.\\+]{12,}", options: []) {
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            text = bearerRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "Bearer [REDACTED]")
         }
         
         // Redact Cookie header values
@@ -136,11 +138,11 @@ public struct OutputSanitiser: Sendable {
     private static func holdBackStreamingSuffix(_ text: String) -> String {
         let patterns = [
             "\\bsk-[a-zA-Z0-9_-]{0,100}$",
+            "(?i)authorization:\\s*(?:(?:basic|digest|token|bearer)\\s+)?[a-zA-Z0-9_\\-\\.\\+/=]{0,100}$",
             "(?i)\\bbearer(?:\\s+[a-zA-Z0-9_\\-\\.\\+]{0,100})?$",
             "/(?:Users(?:/[a-zA-Z0-9_.-]{0,50})?|User|Use|Us)$",
             "-----BEGIN[a-zA-Z0-9\\+/=\\s-]{0,2000}$",
             "(?i)\\b([a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|client_secret|auth)[a-zA-Z0-9_-]*)\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-\\.\\+]{0,100}$",
-            "(?i)authorization:\\s*(?:basic|digest|token|bearer)?\\s*[a-zA-Z0-9_\\-\\.\\+/=]{0,100}$",
             "(?i)cookie:\\s*[^\\r\\n]{0,200}$",
             "\\b(?:ghp|ghs|github_pat)_[a-zA-Z0-9_]{0,100}$"
         ]

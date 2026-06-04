@@ -289,4 +289,95 @@ final class RemoteTunnelTests: XCTestCase {
             XCTAssertEqual(p, decoded)
         }
     }
+
+    // MARK: - Phase 6B N5: RemoteTunnelRequest host and port validation
+
+    func testRemoteTunnelRequestValidPort() {
+        XCTAssertTrue(RemoteTunnelRequest.isValidPort(1))
+        XCTAssertTrue(RemoteTunnelRequest.isValidPort(22))
+        XCTAssertTrue(RemoteTunnelRequest.isValidPort(9119))
+        XCTAssertTrue(RemoteTunnelRequest.isValidPort(65535))
+        XCTAssertFalse(RemoteTunnelRequest.isValidPort(0))
+        XCTAssertFalse(RemoteTunnelRequest.isValidPort(-1))
+        XCTAssertFalse(RemoteTunnelRequest.isValidPort(65536))
+        XCTAssertFalse(RemoteTunnelRequest.isValidPort(99999))
+    }
+
+    func testRemoteTunnelRequestValidRemoteHost_acceptsDNSNames() {
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("127.0.0.1"))
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("localhost"))
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("hermes.internal"))
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("my-server.example.com"))
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("server_01.lab"))
+    }
+
+    func testRemoteTunnelRequestValidRemoteHost_rejectsEmpty() {
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost(""))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("   "))
+    }
+
+    func testRemoteTunnelRequestValidRemoteHost_rejectsColon() {
+        // A colon would corrupt the SSH -L localPort:remoteHost:remotePort argument
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("127.0.0.1:9119"))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("::1"))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("host:extra"))
+    }
+
+    func testRemoteTunnelRequestValidRemoteHost_rejectsWhitespace() {
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("my host"))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("host\twith\ttabs"))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("host\nnewline"))
+    }
+
+    func testRemoteTunnelRequestValidRemoteHost_rejectsShellMetachars() {
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("host;rm -rf /"))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("host|cat /etc/passwd"))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("host&&command"))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("host`whoami`"))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("$(evil)"))
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("host -o ProxyCommand=evil"))
+    }
+
+    func testRemoteTunnelRequestIsValid() {
+        let good = RemoteTunnelRequest(localPort: 9119, remoteHost: "127.0.0.1", remotePort: 9119, purpose: .runtimeAccess)
+        XCTAssertTrue(good.isValid)
+
+        let badHost = RemoteTunnelRequest(localPort: 9119, remoteHost: "host:evil", remotePort: 9119, purpose: .runtimeAccess)
+        XCTAssertFalse(badHost.isValid)
+
+        let badLocalPort = RemoteTunnelRequest(localPort: 0, remoteHost: "127.0.0.1", remotePort: 9119, purpose: .runtimeAccess)
+        XCTAssertFalse(badLocalPort.isValid)
+
+        let badRemotePort = RemoteTunnelRequest(localPort: 9119, remoteHost: "127.0.0.1", remotePort: 99999, purpose: .runtimeAccess)
+        XCTAssertFalse(badRemotePort.isValid)
+    }
+
+    @MainActor
+    func testTunnelStartBlockedForInvalidRemoteHost() async throws {
+        UserDefaults.standard.set(HermesServiceMode.mock.rawValue, forKey: "HermesServiceMode")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "HermesServiceMode")
+        }
+
+        let store = ChatHistoryStore(fileURL: tempDir.appendingPathComponent(UUID().uuidString))
+        let vm = HermesViewModel(service: MockHermesService(), historyStore: store)
+
+        let mockPath = try createMockSSHAdd(exitCode: 0, stdout: "2048 SHA256:abc /Users/developer/.ssh/id_rsa (RSA)", stderr: "")
+        vm.sshPreflightService = SSHPreflightService(sshAddPath: mockPath)
+
+        let settings = RemoteHostSettings(host: "success.local")
+        await vm.testRemoteConnection(settings: settings)
+        XCTAssertEqual(vm.remoteHostStatus.connectionState, .heartbeatPassed)
+
+        // An invalid remoteHost containing a colon must be blocked before SSH args are built
+        let maliciousRequest = RemoteTunnelRequest(
+            localPort: 9119,
+            remoteHost: "127.0.0.1:evil-injection",
+            remotePort: 9119,
+            purpose: .runtimeAccess
+        )
+        await vm.startRemoteTunnel(settings: settings, request: maliciousRequest)
+        XCTAssertEqual(vm.remoteHostStatus.tunnelState, .failed)
+        XCTAssertEqual(vm.remoteHostStatus.errorMessage, "Invalid tunnel port configuration.")
+    }
 }

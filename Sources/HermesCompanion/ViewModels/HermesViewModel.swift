@@ -1351,9 +1351,12 @@ public class HermesViewModel: ObservableObject {
             robustnessState: remoteHostStatus.robustnessState
         )
 
-        // Validate local and remote ports
+        // Validate local port (>1024 blocks privileged ports), remote port, and remote host.
+        // remoteHost is passed directly into SSH -L localPort:remoteHost:remotePort, so
+        // colons, whitespace, and shell metacharacters must be excluded.
         guard request.localPort > 1024 && request.localPort <= 65535,
-              request.remotePort > 0 && request.remotePort <= 65535 else {
+              request.remotePort > 0 && request.remotePort <= 65535,
+              RemoteTunnelRequest.isValidRemoteHost(request.remoteHost) else {
             remoteHostStatus = RemoteHermesStatusSnapshot(
                 hostLabel: settings.displayLabel,
                 hermesFound: remoteHostStatus.hermesFound,

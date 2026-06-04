@@ -166,4 +166,34 @@ public struct RemoteTunnelRequest: Sendable, Equatable, Codable {
         self.remotePort = remotePort
         self.purpose = purpose
     }
+
+    /// Validates that the port value is a legal TCP port number (1–65535).
+    public static func isValidPort(_ port: Int) -> Bool {
+        (1...65535).contains(port)
+    }
+
+    /// Validates that a tunnel remote host string is safe to pass as an
+    /// SSH `-L` forwarding argument.
+    ///
+    /// Rules:
+    /// - Must not be empty.
+    /// - Must not contain `:` (would corrupt the `localPort:remoteHost:remotePort` format).
+    /// - Must not contain whitespace or control characters.
+    /// - Must not contain shell metacharacters (`; & | $ > < ( ) [ ] { } # \` " ! \`).
+    /// - DNS labels and IPv4 literals composed of `[a-zA-Z0-9.-_]` are always accepted.
+    public static func isValidRemoteHost(_ host: String) -> Bool {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let forbidden = CharacterSet.whitespacesAndNewlines
+            .union(.controlCharacters)
+            .union(CharacterSet(charactersIn: ":;|&`$<>()[]{}#'\"!\\"))
+        return trimmed.unicodeScalars.allSatisfy { !forbidden.contains($0) }
+    }
+
+    /// Whether all fields of the request are safe for SSH forwarding.
+    public var isValid: Bool {
+        Self.isValidPort(localPort) &&
+        Self.isValidPort(remotePort) &&
+        Self.isValidRemoteHost(remoteHost)
+    }
 }
