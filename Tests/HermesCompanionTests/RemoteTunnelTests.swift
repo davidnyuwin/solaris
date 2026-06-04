@@ -380,4 +380,44 @@ final class RemoteTunnelTests: XCTestCase {
         XCTAssertEqual(vm.remoteHostStatus.tunnelState, .failed)
         XCTAssertEqual(vm.remoteHostStatus.errorMessage, "Invalid tunnel port configuration.")
     }
+
+    // MARK: - Phase 7 N3: IPv6 Unsupported By Design (v0.10)
+    //
+    // Decision: IPv6 tunnel hosts are explicitly unsupported in v0.10.
+    //
+    // Unbracketed IPv6 (e.g. "::1") contains colons that would corrupt the
+    // SSH -L localPort:remoteHost:remotePort forwarding argument.
+    //
+    // Bracketed IPv6 (e.g. "[::1]") is valid SSH syntax but isValidRemoteHost()
+    // rejects brackets as shell metacharacters. Supporting it safely requires
+    // bracket-aware parsing and is deferred to v0.11 when a concrete need exists.
+    //
+    // Use a DNS name or IPv4 address as the tunnel remote host for v0.10.
+
+    func testIPv6UnbracketedRejectedAsRemoteHost() {
+        // Unbracketed IPv6 contains colons — always rejected
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("::1"),
+                       "Unbracketed IPv6 loopback must be rejected (colon in argument)")
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("2001:db8::1"),
+                       "Unbracketed global IPv6 must be rejected")
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("fe80::1%eth0"),
+                       "Link-local IPv6 with zone ID must be rejected")
+    }
+
+    func testIPv6BracketedRejectedAsRemoteHostV010() {
+        // Bracketed IPv6 is valid SSH syntax but brackets are shell metacharacters
+        // rejected by isValidRemoteHost() in v0.10 — documented as intentional.
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[::1]"),
+                       "Bracketed IPv6 loopback unsupported in v0.10 — deferred to v0.11")
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[2001:db8::1]"),
+                       "Bracketed global IPv6 unsupported in v0.10")
+    }
+
+    func testIPv4AndDNSStillAcceptedAfterIPv6Decision() {
+        // Confirm IPv4 and DNS names are unaffected by the IPv6 decision
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("127.0.0.1"))
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("192.168.1.100"))
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("hermes.internal"))
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("my-server.example.com"))
+    }
 }

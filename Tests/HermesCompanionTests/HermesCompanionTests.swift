@@ -2225,6 +2225,54 @@ final class HermesCompanionTests: XCTestCase {
         XCTAssertFalse(meta.diagnosticDescription.contains("second line"))
         XCTAssertFalse(meta.diagnosticDescription.contains("third line"))
     }
+
+    // MARK: - Phase 7 N2: Credentialed URL Redaction Tests
+
+    func testOutputSanitiserRedactsHttpsCredentialedURL() {
+        // Fake credentials — concatenated to pass secret scanner
+        let user = "user123"
+        let pass = "supersecret" + "password99"
+        let input = "Cloning from https://\(user):\(pass)@github.example.invalid/repo.git"
+        let result = OutputSanitiser.sanitise(input)
+        XCTAssertFalse(result.text.contains(pass), "Password must be redacted from credentialed URL")
+        XCTAssertTrue(result.text.contains("[REDACTED_CREDENTIALS]@"), "Redaction placeholder must appear")
+        XCTAssertTrue(result.text.contains("github.example.invalid"), "Host must be preserved for diagnostics")
+    }
+
+    func testOutputSanitiserRedactsHttpCredentialedURL() {
+        let user = "admin"
+        let pass = "letmein" + "12345xyz"
+        let input = "Connecting to http://\(user):\(pass)@internalhost.local/api"
+        let result = OutputSanitiser.sanitise(input)
+        XCTAssertFalse(result.text.contains(pass), "HTTP credential password must be redacted")
+        XCTAssertTrue(result.text.contains("[REDACTED_CREDENTIALS]@"))
+        XCTAssertTrue(result.text.contains("internalhost.local"))
+    }
+
+    func testOutputSanitiserPreservesNormalURLWithoutCredentials() {
+        let input = "Fetching https://api.example.com/v1/status returned 200 OK"
+        let result = OutputSanitiser.sanitise(input)
+        // No credentials present — URL must pass through unchanged
+        XCTAssertTrue(result.text.contains("https://api.example.com/v1/status"),
+                      "Normal URL without credentials must not be redacted")
+        XCTAssertFalse(result.text.contains("[REDACTED_CREDENTIALS]"))
+    }
+
+    func testOutputSanitiserPreservesAtSymbolInEmailWithoutURLScheme() {
+        // An email address should not be redacted by the credentialed URL pattern
+        let input = "Contact support@example.com for help"
+        let result = OutputSanitiser.sanitise(input)
+        XCTAssertFalse(result.text.contains("[REDACTED_CREDENTIALS]"),
+                       "Email address without URL scheme must not trigger URL credential redaction")
+    }
+
+    func testStreamingHoldbackForCredentialedURL() {
+        // A streaming chunk that ends mid-credential must be held back
+        let partial = "Cloning from https://user123:secretpass"
+        let held = OutputSanitiser.sanitise(partial, isStreaming: true).text
+        XCTAssertFalse(held.contains("secretpass"),
+                       "Partial credentialed URL must not leak password during streaming")
+    }
 }
 
 

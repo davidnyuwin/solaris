@@ -181,6 +181,12 @@ public struct RemoteTunnelRequest: Sendable, Equatable, Codable {
     /// - Must not contain whitespace or control characters.
     /// - Must not contain shell metacharacters (`; & | $ > < ( ) [ ] { } # \` " ! \`).
     /// - DNS labels and IPv4 literals composed of `[a-zA-Z0-9.-_]` are always accepted.
+    ///
+    /// **IPv6 not supported in v0.10 by design.**
+    /// Unbracketed IPv6 literals (e.g. `::1`) contain colons that corrupt the SSH `-L` format.
+    /// Bracketed IPv6 (`[::1]`) is valid SSH syntax but requires bracket parsing and is
+    /// deferred to v0.11 when a concrete use case is identified. Use a DNS name or IPv4
+    /// address as the tunnel remote host for v0.10.
     public static func isValidRemoteHost(_ host: String) -> Bool {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
@@ -197,3 +203,4 @@ public struct RemoteTunnelRequest: Sendable, Equatable, Codable {
         Self.isValidRemoteHost(remoteHost)
     }
 }
+

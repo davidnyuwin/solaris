@@ -117,6 +117,17 @@ public struct OutputSanitiser: Sendable {
             text = assignmentRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "$1: [REDACTED]")
         }
 
+        // Redact credentialed URLs: https://user:pass@host or http://user:pass@host
+        // Preserves scheme and host for diagnostic readability; redacts only the credential segment.
+        if let credUrlRegex = try? NSRegularExpression(
+            pattern: "(?i)(https?://)([^@\\s/]+:[^@\\s/]+@)",
+            options: []
+        ) {
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            text = credUrlRegex.stringByReplacingMatches(in: text, options: [], range: range,
+                withTemplate: "$1[REDACTED_CREDENTIALS]@")
+        }
+
         if isStreaming {
             text = holdBackStreamingSuffix(text)
         }
@@ -143,6 +154,7 @@ public struct OutputSanitiser: Sendable {
             "/(?:Users(?:/[a-zA-Z0-9_.-]{0,50})?|User|Use|Us)$",
             "-----BEGIN[a-zA-Z0-9\\+/=\\s-]{0,2000}$",
             "(?i)\\b([a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|client_secret|auth)[a-zA-Z0-9_-]*)\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-\\.\\+]{0,100}$",
+            "(?i)(https?://)([^@\\s/]*:[^@\\s/]*@[^\\s/]{0,100})$",
             "(?i)cookie:\\s*[^\\r\\n]{0,200}$",
             "\\b(?:ghp|ghs|github_pat)_[a-zA-Z0-9_]{0,100}$"
         ]
