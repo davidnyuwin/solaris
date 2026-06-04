@@ -160,15 +160,15 @@ final class LiveRemotePolicyTests: XCTestCase {
 
     func testRawSecretNeverLogged() {
         // RemoteCommandInputMetadata must not contain raw payload
-        let payload = Data("sk-1234567890abcdef".utf8)
+        let payload = Data("sk-1234567890abcdefghijklmnopqrstuv".utf8)
         let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "chat")
-        XCTAssertFalse(meta.command.contains("sk-1234567890abcdef"),
+        XCTAssertFalse(meta.command.contains("sk-1234567890abcdefghijklmnopqrstuv"),
                        "Metadata command field must not contain raw stdin content")
         XCTAssertEqual(meta.byteCount, payload.count,
                        "Only byte count stored, not content")
         // The sanitisedFirstLineHint must not contain the raw secret
         if let hint = meta.sanitisedFirstLineHint {
-            XCTAssertFalse(hint.contains("sk-1234567890abcdef"),
+            XCTAssertFalse(hint.contains("sk-1234567890abcdefghijklmnopqrstuv"),
                           "Sanitised hint must not contain raw secret")
         }
     }
