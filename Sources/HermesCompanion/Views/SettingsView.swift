@@ -272,6 +272,8 @@ public struct SettingsView: View {
                         } else {
                             remotePolicy = .disabled
                             remotePolicy.save()
+                            userApproved = false
+                            UserDefaults.standard.set(false, forKey: "LiveRemotePolicyUserApproved")
                             viewModel.clearRemoteStatus()
                             remoteTestStatus = .notConfigured
                         }

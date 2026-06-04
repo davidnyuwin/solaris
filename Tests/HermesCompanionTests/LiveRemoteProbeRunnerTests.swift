@@ -192,4 +192,23 @@ final class LiveRemoteProbeRunnerTests: XCTestCase {
         // (verified implicitly as runner passes nil stdinData to executor)
         XCTAssertTrue(true)
     }
+
+    func testLiveProbePathSanitisation() async {
+        enablePolicyAndApproval()
+        mockExecutor.customStdout = "Error in file /Users/developer/.ssh/id_ed25519 line 10"
+        
+        let request = LiveRemoteProbeRequest(host: testHost, username: testUser, identityPath: nil, probe: .hermesVersion)
+        let result = await runner.run(request)
+        
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.sanitizedSummary, "Error in file ~/.ssh/id_ed25519 line 10")
+    }
+
+    func testPolicyDisabledByDefault() {
+        let defaultPolicy = LiveRemotePolicy.load()
+        XCTAssertEqual(defaultPolicy, .disabled, "Live remote policy must default to disabled")
+        
+        let defaultApproval = UserDefaults.standard.bool(forKey: "LiveRemotePolicyUserApproved")
+        XCTAssertFalse(defaultApproval, "User approval must default to false")
+    }
 }
