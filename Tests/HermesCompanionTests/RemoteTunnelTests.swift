@@ -381,40 +381,80 @@ final class RemoteTunnelTests: XCTestCase {
         XCTAssertEqual(vm.remoteHostStatus.errorMessage, "Invalid tunnel port configuration.")
     }
 
-    // MARK: - Phase 7 N3: IPv6 Unsupported By Design (v0.10)
+    // MARK: - v0.11 Phase 1: IPv6 Bracket Support
     //
-    // Decision: IPv6 tunnel hosts are explicitly unsupported in v0.10.
+    // v0.11 adds bracketed IPv6 tunnel host support.
     //
-    // Unbracketed IPv6 (e.g. "::1") contains colons that would corrupt the
+    // Unbracketed IPv6 (e.g. "::1") is still rejected — colons would corrupt the
     // SSH -L localPort:remoteHost:remotePort forwarding argument.
     //
-    // Bracketed IPv6 (e.g. "[::1]") is valid SSH syntax but isValidRemoteHost()
-    // rejects brackets as shell metacharacters. Supporting it safely requires
-    // bracket-aware parsing and is deferred to v0.11 when a concrete need exists.
-    //
-    // Use a DNS name or IPv4 address as the tunnel remote host for v0.10.
+    // Bracketed IPv6 (e.g. "[::1]", "[2001:db8::1]") is now accepted.
+    // The brackets disambiguate colons in the SSH -L argument:
+    //   9119:[::1]:9119 — valid SSH syntax.
+    // Inner content is validated: hex digits, colons, dots only, with at least one colon.
+    // Brackets outside the IPv6 path are still rejected as shell metacharacters.
 
-    func testIPv6UnbracketedRejectedAsRemoteHost() {
+    func testIPv6UnbracketedStillRejected() {
         // Unbracketed IPv6 contains colons — always rejected
         XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("::1"),
                        "Unbracketed IPv6 loopback must be rejected (colon in argument)")
         XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("2001:db8::1"),
                        "Unbracketed global IPv6 must be rejected")
         XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("fe80::1%eth0"),
-                       "Link-local IPv6 with zone ID must be rejected")
+                       "Link-local IPv6 with zone ID must be rejected (percent sign)")
     }
 
-    func testIPv6BracketedRejectedAsRemoteHostV010() {
-        // Bracketed IPv6 is valid SSH syntax but brackets are shell metacharacters
-        // rejected by isValidRemoteHost() in v0.10 — documented as intentional.
-        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[::1]"),
-                       "Bracketed IPv6 loopback unsupported in v0.10 — deferred to v0.11")
-        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[2001:db8::1]"),
-                       "Bracketed global IPv6 unsupported in v0.10")
+    func testIPv6BracketedAcceptedAsRemoteHost() {
+        // v0.11: bracketed IPv6 is now accepted
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("[::1]"),
+                       "Bracketed IPv6 loopback must be accepted in v0.11")
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("[2001:db8::1]"),
+                       "Bracketed global IPv6 must be accepted")
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("[::ffff:192.0.2.1]"),
+                       "IPv4-mapped IPv6 must be accepted")
+        XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("[fd00::1]"),
+                       "Unique local IPv6 must be accepted")
     }
 
-    func testIPv4AndDNSStillAcceptedAfterIPv6Decision() {
-        // Confirm IPv4 and DNS names are unaffected by the IPv6 decision
+    func testIPv6MalformedBracketsRejected() {
+        // Missing closing bracket
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[::1"),
+                       "Missing closing bracket must be rejected")
+        // Missing opening bracket
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("::1]"),
+                       "Missing opening bracket (treated as non-bracketed, colon rejected)")
+        // Empty brackets
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[]"),
+                       "Empty brackets must be rejected")
+        // Non-IPv6 in brackets
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[not-an-address]"),
+                       "Non-IPv6 content in brackets must be rejected (hyphens forbidden)")
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[localhost]"),
+                       "DNS name in brackets must be rejected (no colon)")
+        // Brackets with shell metacharacters
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[::1];rm -rf /"),
+                       "Bracketed host followed by shell injection must be rejected")
+        XCTAssertFalse(RemoteTunnelRequest.isValidRemoteHost("[::1]$(evil)"),
+                       "Bracketed host followed by command substitution must be rejected")
+    }
+
+    func testSSHArgumentConstructionWithBracketedIPv6() {
+        // Verify SSH -L argument preserves brackets correctly
+        let req = RemoteTunnelRequest(localPort: 9119, remoteHost: "[::1]", remotePort: 9119,
+                                     purpose: .runtimeAccess)
+        XCTAssertTrue(req.isValid, "Bracketed IPv6 request must be valid")
+        let cmd = RemoteHermesCommand.tunnelStart
+        let args = cmd.remoteArguments(hermesCommandBase: "hermes", tunnelRequest: req)
+        let sshArg = args.first { $0.starts(with: "-L") }
+        XCTAssertNotNil(sshArg, "SSH -L argument must be present")
+        // The argument should be the full -L localPort:remoteHost:remotePort
+        let tunnelArg = args[args.index(of: "-L")! + 1]
+        XCTAssertEqual(tunnelArg, "9119:[::1]:9119",
+                       "SSH -L argument must preserve brackets for IPv6")
+    }
+
+    func testIPv4AndDNSStillAcceptedAfterIPv6Support() {
+        // Confirm IPv4 and DNS names are unaffected by IPv6 support
         XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("127.0.0.1"))
         XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("192.168.1.100"))
         XCTAssertTrue(RemoteTunnelRequest.isValidRemoteHost("hermes.internal"))

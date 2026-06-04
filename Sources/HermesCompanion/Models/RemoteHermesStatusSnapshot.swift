@@ -177,19 +177,36 @@ public struct RemoteTunnelRequest: Sendable, Equatable, Codable {
     ///
     /// Rules:
     /// - Must not be empty.
-    /// - Must not contain `:` (would corrupt the `localPort:remoteHost:remotePort` format).
     /// - Must not contain whitespace or control characters.
-    /// - Must not contain shell metacharacters (`; & | $ > < ( ) [ ] { } # \` " ! \`).
+    /// - Must not contain shell metacharacters (`; & | $ > < ( ) { } # \` " ! \`).
     /// - DNS labels and IPv4 literals composed of `[a-zA-Z0-9.-_]` are always accepted.
+    /// - Bracketed IPv6 literals (e.g. `[::1]`, `[2001:db8::1]`) are accepted.
+    ///   Inner content must be hex digits, colons, and/or dots only, with at least one colon.
+    /// - Unbracketed IPv6 (e.g. `::1`) is rejected — colons would corrupt the
+    ///   `localPort:remoteHost:remotePort` format.
+    /// - Brackets `[` `]` are forbidden outside the bracketed-IPv6 path.
     ///
-    /// **IPv6 not supported in v0.10 by design.**
-    /// Unbracketed IPv6 literals (e.g. `::1`) contain colons that corrupt the SSH `-L` format.
-    /// Bracketed IPv6 (`[::1]`) is valid SSH syntax but requires bracket parsing and is
-    /// deferred to v0.11 when a concrete use case is identified. Use a DNS name or IPv4
-    /// address as the tunnel remote host for v0.10.
+    /// SSH `-L` argument construction:
+    /// - IPv4/DNS: `9119:host:9119` (host has no colons — unambiguous)
+    /// - IPv6:     `9119:[::1]:9119` (brackets disambiguate colons — valid SSH syntax)
     public static func isValidRemoteHost(_ host: String) -> Bool {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
+
+        // Bracketed IPv6 literal: [addr]
+        if trimmed.hasPrefix("[") {
+            // Must end with ] and have non-empty inner content
+            guard trimmed.hasSuffix("]"), trimmed.count > 2 else { return false }
+            let inner = String(trimmed.dropFirst().dropLast())
+            // Inner must contain only IPv6-safe characters and at least one colon
+            let ipv6Allowed = CharacterSet(charactersIn: "0123456789abcdefABCDEF:.")
+            guard inner.unicodeScalars.allSatisfy({ ipv6Allowed.contains($0) }) else { return false }
+            guard inner.contains(":") else { return false }
+            return true
+        }
+
+        // Non-bracketed: reject colons (would corrupt SSH -L format)
+        // Also reject brackets (only valid in the bracketed-IPv6 path above)
         let forbidden = CharacterSet.whitespacesAndNewlines
             .union(.controlCharacters)
             .union(CharacterSet(charactersIn: ":;|&`$<>()[]{}#'\"!\\"))
