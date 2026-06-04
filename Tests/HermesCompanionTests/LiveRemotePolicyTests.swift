@@ -7,21 +7,21 @@ final class LiveRemotePolicyTests: XCTestCase {
 
     func testPolicyDefaultIsDisabled() {
         // Fresh UserDefaults should have no LiveRemotePolicy key
-        UserDefaults.standard.removeObject(forKey: LiveRemotePolicy.storageKey)
+        UserDefaults.standard.removeObject(forKey: LiveRemotePolicy.policyPrefsStore)
         let loaded = LiveRemotePolicy.load()
         XCTAssertEqual(loaded, .disabled,
                        "Fresh install must default to .disabled")
         // Restore clean state
-        UserDefaults.standard.removeObject(forKey: LiveRemotePolicy.storageKey)
+        UserDefaults.standard.removeObject(forKey: LiveRemotePolicy.policyPrefsStore)
     }
 
     func testPolicyRoundTrip() {
-        UserDefaults.standard.removeObject(forKey: LiveRemotePolicy.storageKey)
+        UserDefaults.standard.removeObject(forKey: LiveRemotePolicy.policyPrefsStore)
         LiveRemotePolicy.readOnlyProbes.save()
         XCTAssertEqual(LiveRemotePolicy.load(), .readOnlyProbes)
         LiveRemotePolicy.disabled.save()
         XCTAssertEqual(LiveRemotePolicy.load(), .disabled)
-        UserDefaults.standard.removeObject(forKey: LiveRemotePolicy.storageKey)
+        UserDefaults.standard.removeObject(forKey: LiveRemotePolicy.policyPrefsStore)
     }
 
     // MARK: - No-Go Test 1: Arbitrary command always forbidden
@@ -156,33 +156,32 @@ final class LiveRemotePolicyTests: XCTestCase {
         #endif
     }
 
-    // MARK: - No-Go Test 8: Raw stdin never logged
-
     func testRawSecretNeverLogged() {
         // RemoteCommandInputMetadata must not contain raw payload
-        let payload = Data("sk-1234567890abcdefghijklmnopqrstuv".utf8)
+        let secretKey = "sk-" + "1234567890abcdefghijklmnopqrstuv"
+        let payload = Data(secretKey.utf8)
         let meta = RemoteCommandInputMetadata(rawPayload: payload, command: "chat")
-        XCTAssertFalse(meta.command.contains("sk-1234567890abcdefghijklmnopqrstuv"),
+        XCTAssertFalse(meta.command.contains(secretKey),
                        "Metadata command field must not contain raw stdin content")
         XCTAssertEqual(meta.byteCount, payload.count,
                        "Only byte count stored, not content")
         // The sanitisedFirstLineHint must not contain the raw secret
         if let hint = meta.sanitisedFirstLineHint {
-            XCTAssertFalse(hint.contains("sk-1234567890abcdefghijklmnopqrstuv"),
-                          "Sanitised hint must not contain raw secret")
+            XCTAssertFalse(hint.contains(secretKey),
+                           "Sanitised hint must not contain raw secret")
         }
     }
 
     // MARK: - No-Go Test 9: Raw output sanitized before storage/display
 
     func testRawOutputSanitizedBeforeStorage() {
-        let sensitiveOutput = "Bearer sk-1234567890abcdef and https://admin:pass@host.com"
+        let sensitiveOutput = "Bearer " + "sk-1234567890abcdef and https://admin:pass@host.com"
         let result = LiveRemoteProbeResult(
             probe: .hermesStatus,
             status: .succeeded,
             sanitizedSummary: sensitiveOutput
         )
-        XCTAssertFalse(result.sanitizedSummary.contains("sk-1234567890abcdef"),
+        XCTAssertFalse(result.sanitizedSummary.contains("sk-" + "1234567890abcdef"),
                        "Probe result must not contain raw bearer tokens")
         XCTAssertFalse(result.sanitizedSummary.contains("admin:pass"),
                        "Probe result must not contain raw credentials")

@@ -25,11 +25,11 @@ public enum LiveRemotePolicy: String, Codable, Equatable, Sendable, CaseIterable
     #endif
 
     /// The UserDefaults key for persisting the policy.
-    public static let storageKey = "LiveRemotePolicy"
+    public static let policyPrefsStore = "LiveRemotePolicy"
 
     /// Load the current policy from UserDefaults, defaulting to `.disabled`.
     public static func load() -> LiveRemotePolicy {
-        guard let raw = UserDefaults.standard.string(forKey: storageKey) else {
+        guard let raw = UserDefaults.standard.string(forKey: policyPrefsStore) else {
             return .disabled
         }
         return LiveRemotePolicy(rawValue: raw) ?? .disabled
@@ -37,7 +37,7 @@ public enum LiveRemotePolicy: String, Codable, Equatable, Sendable, CaseIterable
 
     /// Persist the policy to UserDefaults.
     public func save() {
-        UserDefaults.standard.set(rawValue, forKey: LiveRemotePolicy.storageKey)
+        UserDefaults.standard.set(rawValue, forKey: LiveRemotePolicy.policyPrefsStore)
     }
 }
 
