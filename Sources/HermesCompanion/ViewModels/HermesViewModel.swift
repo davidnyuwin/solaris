@@ -881,7 +881,7 @@ public class HermesViewModel: ObservableObject {
     /// Always applies DiagnosticsRedactor to redact local paths, PIDs, and token-like strings.
     public func makeRedactedDiagnosticsSummary() -> String {
         var summary = "=== Solaris Diagnostics Summary ===\n"
-        summary += "Solaris Version: 0.8.0-dev\n"
+        summary += "Solaris Version: 0.11.0-beta\n"
         
         let savedMode = UserDefaults.standard.string(forKey: "HermesServiceMode") ?? "mock"
         let modeName: String
