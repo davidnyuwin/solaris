@@ -155,6 +155,7 @@ public struct OutputSanitiser: Sendable {
             "-----BEGIN[a-zA-Z0-9\\+/=\\s-]{0,2000}$",
             "(?i)\\b([a-zA-Z0-9_-]*(?:key|secret|token|password|passwd|client_secret|auth)[a-zA-Z0-9_-]*)\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-\\.\\+]{0,100}$",
             "(?i)(https?://)([^@\\s/]*:[^@\\s/]*@[^\\s/]{0,100})$",
+            "(?i)https?://[^@\\s/]+:[^\\s/]*$",
             "(?i)cookie:\\s*[^\\r\\n]{0,200}$",
             "\\b(?:ghp|ghs|github_pat)_[a-zA-Z0-9_]{0,100}$"
         ]
