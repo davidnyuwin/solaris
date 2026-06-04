@@ -75,7 +75,7 @@ public enum LiveRemoteDecision: Equatable, Sendable {
 }
 
 /// Reasons why a live remote operation was blocked.
-public enum LiveRemoteBlockReason: String, Codable, Equatable, Sendable {
+public enum LiveRemoteBlockReason: String, Codable, Equatable, Sendable, CaseIterable {
     /// Policy is `.disabled` — all live operations blocked.
     case policyDisabled
     /// User has not yet confirmed the probe opt-in dialog.

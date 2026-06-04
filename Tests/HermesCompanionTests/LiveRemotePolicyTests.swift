@@ -52,7 +52,7 @@ final class LiveRemotePolicyTests: XCTestCase {
         let forbidden = " ;|&`$<>()[]{}#'\"!\\"
         for char in forbidden {
             let malicious = "hermes\(char)whoami"
-            let result = RemoteSSHExecutor.verifyBase(malicious)
+            let result = RemoteHermesCommand.verifyBase(malicious)
             XCTAssertNotEqual(result, malicious,
                               "Shell char '\(char)' should cause fallback, not pass through")
         }
